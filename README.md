@@ -41,7 +41,7 @@ curl http://localhost:8082/api/v1/chat/completions \
 ```bash
 curl http://localhost:8082/api/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -d '{"model": "codex/gpt-5.5", "reasoning_effort": "high", "messages": [{"role": "user", "content": "Hello!"}]}'
+  -d '{"model": "codex/gpt-5.6-sol", "reasoning_effort": "high", "messages": [{"role": "user", "content": "Hello!"}]}'
 ```
 
 ```bash
@@ -68,7 +68,7 @@ response = client.chat.completions.create(
 print(response.choices[0].message.content)
 
 response = client.chat.completions.create(
-    model="codex/gpt-5.5",
+    model="codex/gpt-5.6-sol",
     reasoning_effort="high",
     messages=[{"role": "user", "content": "Hello from Codex!"}],
 )
@@ -89,8 +89,7 @@ agentbridge --port 8083             # choose another port
 agentbridge -w 3                    # run with three pooled workers
 agentbridge --version               # print package and git version
 uv tool install . --force --no-cache # reinstall local source build
-uv run --extra test pytest -m unit   # run unit tests
-uv run --extra test pytest           # run full tests; integration tests expect a server
+uv run --extra test pytest           # run tests
 ```
 
 ## Publishing
@@ -110,10 +109,10 @@ No PyPI API token is required. The workflow builds the package, verifies the bui
 - Endpoints: `POST /api/v1/chat/completions`, `GET /api/v1/models`, `GET /health`, `/dashboard`, and `/dashboard/chat`.
 - Model IDs must be prefixed with an AgentBridge provider namespace: `claudecode/<model>`, `codex/<model>`, or `openrouter/<provider>/<model>`.
 - Claude Code model inputs are `claudecode/opus`, `claudecode/sonnet`, `claudecode/haiku`, or namespaced slugs containing those names, such as `claudecode/anthropic/claude-sonnet-4`.
-- Codex model inputs are `codex/<model>`. The requested model is passed directly to Codex CLI; `codex/gpt-5.5` defaults to `reasoning_effort="high"` unless the request sets another effort.
+- Codex model inputs are `codex/<model>`. The requested model is passed directly to Codex CLI; `codex/gpt-5.6-sol` and `codex/gpt-5.5` default to `reasoning_effort="high"` unless the request sets another effort.
 - OpenRouter model inputs are `openrouter/<provider>/<model>`, for example `openrouter/anthropic/claude-sonnet-4`. The upstream model ID after `openrouter/` is passed through the official OpenRouter Python SDK.
 - User configuration lives in `~/.config/agentbridge/`. AgentBridge creates `~/.config/agentbridge/.env` on startup for local keys such as `OPENROUTER_API_KEY`; process environment variables still take precedence. Set `AGENTBRIDGE_CONFIG_DIR` to move this directory.
-- `PORT`, `POOL_SIZE`, `CLAUDE_TIMEOUT`, `CODEX_TIMEOUT`, `OPENROUTER_TIMEOUT`, `OPENROUTER_API_KEY`, `LOG_DIR`, and `MAX_LOG_FILES` control local runtime behavior.
+- `PORT`, `POOL_SIZE`, `CLAUDE_TIMEOUT`, `CODEX_TIMEOUT`, `OPENROUTER_TIMEOUT`, `OPENROUTER_API_KEY`, `LOG_DIR`, and `MAX_LOG_FILES` control local runtime behavior. `POOL_SIZE` defaults to `1`; an explicit `--workers` value overrides it.
 - Claude SDK clients are created lazily for the requested model and reused from an idle pool capped by `POOL_SIZE`; no Claude clients are warmed at server boot. Each Codex request runs an ephemeral `codex exec` process in an isolated temporary directory.
 - Claude Code tools are disabled for SDK sessions. Codex runs with read-only sandboxing, no approvals, ephemeral sessions, and ignored project rules. OpenAI-style function calling is emulated by prompting for JSON tool-call output.
 - Session logs are written as JSON under `~/.config/agentbridge/logs/sessions` by default; base64 image and PDF attachments are saved beside their request logs. `LOG_DIR` overrides this.

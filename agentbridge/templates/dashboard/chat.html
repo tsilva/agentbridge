@@ -1,48 +1,11 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>agentbridge chat</title>
-    <style>
+{% extends "base.html" %}
+
+{% block title %}agentbridge chat{% endblock %}
+
+{% block page_styles %}
         :root {
-            --bg: #f7f8f8;
-            --surface: #ffffff;
-            --surface-muted: #f1f3f3;
-            --text: #1f2424;
-            --muted: #667070;
-            --border: #dfe4e4;
-            --accent: #168575;
-            --accent-strong: #0f6f62;
-            --danger: #b42318;
             --danger-bg: #fff1f0;
-            --danger-border: #f5c6c1;
-            --warn: #a15c07;
-            --ok: #1b806a;
             --shadow: 0 18px 50px rgba(18, 27, 27, 0.08);
-            --font: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-            --mono: "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
-            --header-height: 64px;
-        }
-
-        * { box-sizing: border-box; }
-
-        html, body {
-            margin: 0;
-            min-height: 100%;
-            background: var(--bg);
-            color: var(--text);
-            font-family: var(--font);
-            font-size: 14px;
-        }
-
-        body {
-            height: 100vh;
-            overflow: hidden;
-        }
-
-        button, input, select, textarea {
-            font: inherit;
         }
 
         button {
@@ -51,89 +14,12 @@
         }
 
         .app {
-            height: 100vh;
-            display: grid;
             grid-template-rows: var(--header-height) 1fr;
-        }
-
-        .topbar {
-            min-height: var(--header-height);
-            background: rgba(255, 255, 255, 0.92);
-            border-bottom: 1px solid var(--border);
-            display: grid;
-            grid-template-columns: auto 1fr auto;
-            align-items: center;
-            gap: 18px;
-            padding: 0 20px;
-        }
-
-        .brand {
-            display: inline-flex;
-            align-items: center;
-            gap: 10px;
-            color: var(--text);
-            font-size: 21px;
-            font-weight: 750;
-            letter-spacing: 0;
-            text-decoration: none;
-        }
-
-        .brand-mark {
-            flex: none;
-            width: 28px;
-            height: 21px;
-        }
-
-        .main-nav {
-            justify-self: start;
-            height: 42px;
-            display: inline-flex;
-            align-items: stretch;
-            border: 1px solid var(--border);
-            border-radius: 7px;
-            background: var(--surface);
-            overflow: hidden;
-            box-shadow: 0 1px 0 rgba(18, 27, 27, 0.03);
-        }
-
-        .nav-item {
-            appearance: none;
-            min-width: 112px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            padding: 0 18px;
-            color: var(--muted);
-            background: transparent;
-            text-decoration: none;
-            border: 0;
-            border-bottom: 3px solid transparent;
-            font-weight: 550;
-            cursor: pointer;
-        }
-
-        .nav-item.active {
-            color: var(--accent-strong);
-            border-bottom-color: var(--accent);
-            background: #fbfefe;
-        }
-
-        .nav-item:focus-visible {
-            outline: 2px solid rgba(22, 133, 117, 0.35);
-            outline-offset: -2px;
-        }
-
-        .nav-item:hover {
-            color: var(--text);
-            background: var(--surface-muted);
         }
 
         .header-actions {
             min-width: 0;
-            display: flex;
-            align-items: center;
             justify-content: flex-end;
-            gap: 12px;
         }
 
         .field {
@@ -722,39 +608,22 @@
                 width: 100%;
             }
         }
-    </style>
-</head>
-<body>
-    <div class="app">
-        <header class="topbar">
-            <a class="brand" href="/dashboard">
-                <svg class="brand-mark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 24" fill="none" stroke="#f04438" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <line x1="2" y1="16" x2="30" y2="16"></line>
-                    <path d="M4 16 Q16 4 28 16"></path>
-                    <line x1="10" y1="16" x2="10" y2="11.2" stroke-opacity="0.5" stroke-width="1.5"></line>
-                    <line x1="16" y1="16" x2="16" y2="7" stroke-opacity="0.5" stroke-width="1.5"></line>
-                    <line x1="22" y1="16" x2="22" y2="11.2" stroke-opacity="0.5" stroke-width="1.5"></line>
-                </svg>
-                AgentBridge
-            </a>
-            <nav class="main-nav" aria-label="Dashboard views">
-                <a class="nav-item" href="/dashboard">Monitor</a>
-                <a class="nav-item active" href="/dashboard/chat">Chat</a>
-            </nav>
-            <input id="base-url" type="hidden" value="/api/v1">
-            <div class="header-actions">
-                <label class="field field-model">
-                    <span>Model</span>
-                    <select id="model">
-                        <option value="claudecode/sonnet">claudecode/sonnet</option>
-                        <option value="codex/gpt-5.5">codex/gpt-5.5</option>
-                        <option value="openrouter/anthropic/claude-sonnet-4">openrouter/anthropic/claude-sonnet-4</option>
-                    </select>
-                </label>
-                <div id="status" class="status">Checking</div>
-            </div>
-        </header>
+{% endblock %}
 
+{% block header_actions %}
+    <input id="base-url" type="hidden" value="/api/v1">
+    <label class="field field-model">
+        <span>Model</span>
+        <select id="model">
+            {% for model in available_models %}
+            <option value="{{ model.slug }}"{% if model.slug == default_model %} selected{% endif %}>{{ model.slug }}</option>
+            {% endfor %}
+        </select>
+    </label>
+    <div id="status" class="status">Checking</div>
+{% endblock %}
+
+{% block content %}
         <main class="main">
             <section id="messages" class="messages" aria-live="polite">
                 <div class="empty">
@@ -783,8 +652,9 @@
                 <input id="file-input" class="hidden-input" type="file" multiple accept="image/*,application/pdf,text/plain,.txt">
             </section>
         </main>
-    </div>
+{% endblock %}
 
+{% block scripts %}
     <script>
         (function() {
             var baseUrlEl = document.getElementById("base-url");
@@ -800,21 +670,10 @@
             var attachedFiles = [];
             var conversationMessages = [];
             var renderedMessages = [];
-            var modelStreamingSupport = {};
-            var modelLoadTimer = null;
             var chatStateKey = "agentbridge.chat.state.v1";
 
             function endpoint(path) {
                 return baseUrlEl.value.replace(/\/$/, "") + path;
-            }
-
-            function supportsStreaming(modelId) {
-                return modelStreamingSupport[modelId] !== false;
-            }
-
-            function scheduleLoadModels() {
-                clearTimeout(modelLoadTimer);
-                modelLoadTimer = setTimeout(loadModels, 250);
             }
 
             function setStatus(kind, label) {
@@ -1127,7 +986,12 @@
                     var state = JSON.parse(raw);
                     if (!state || !Array.isArray(state.renderedMessages)) return;
                     conversationMessages = Array.isArray(state.conversationMessages) ? state.conversationMessages : [];
-                    if (state.model) modelEl.value = state.model;
+                    if (state.model) {
+                        var hasSavedModel = Array.from(modelEl.options).some(function(option) {
+                            return option.value === state.model;
+                        });
+                        if (hasSavedModel) modelEl.value = state.model;
+                    }
                     state.renderedMessages.forEach(function(message) {
                         var body = appendMessage(
                             message.role,
@@ -1346,12 +1210,6 @@
                 }
             }
 
-            function responseText(data) {
-                var choice = data && data.choices && data.choices[0];
-                var msg = choice && choice.message;
-                return (msg && msg.content) || "";
-            }
-
             function parseSseEvent(buffer, onData) {
                 var events = buffer.split(/\n\n/);
                 var remainder = events.pop();
@@ -1408,7 +1266,7 @@
                     var payload = {
                         model: modelEl.value,
                         messages: conversationMessages.concat([userMessage]),
-                        stream: supportsStreaming(modelEl.value)
+                        stream: true
                     };
 
                     var userTarget = appendMessage("user", displayTextForMessage(text, filesForMessage), filesForMessage);
@@ -1435,17 +1293,9 @@
 
                     setStatus("ok", "Healthy");
                     conversationMessages.push(userMessage);
-                    if (payload.stream) {
-                        var streamedText = await streamResponse(response, assistantTarget);
-                        conversationMessages.push({ role: "assistant", content: streamedText });
-                        updateRenderedMessage(assistantTarget, { text: streamedText });
-                    } else {
-                        var data = await response.json();
-                        var assistantText = responseText(data);
-                        renderAssistantMarkdown(assistantTarget, assistantText);
-                        conversationMessages.push({ role: "assistant", content: assistantText });
-                        updateRenderedMessage(assistantTarget, { text: assistantText });
-                    }
+                    var streamedText = await streamResponse(response, assistantTarget);
+                    conversationMessages.push({ role: "assistant", content: streamedText });
+                    updateRenderedMessage(assistantTarget, { text: streamedText });
                     saveChatState();
                 } catch (error) {
                     removeMessageBody(assistantTarget);
@@ -1458,32 +1308,6 @@
                     }, null);
                 } finally {
                     sendEl.disabled = false;
-                }
-            }
-
-            async function loadModels() {
-                try {
-                    var selectedModel = modelEl.value;
-                    var response = await fetch(endpoint("/models"));
-                    if (!response.ok) return;
-                    var data = await response.json();
-                    if (!data.data || !data.data.length) return;
-                    modelEl.replaceChildren();
-                    data.data.forEach(function(model) {
-                        modelStreamingSupport[model.id] = model.supports_streaming !== false && model.stream !== false;
-                        var option = document.createElement("option");
-                        option.value = model.id;
-                        option.textContent = model.id;
-                        modelEl.appendChild(option);
-                    });
-                    if (selectedModel) {
-                        var hasSelectedModel = Array.from(modelEl.options).some(function(option) {
-                            return option.value === selectedModel;
-                        });
-                        if (hasSelectedModel) modelEl.value = selectedModel;
-                    }
-                } catch (e) {
-                    // Keep static fallback options.
                 }
             }
 
@@ -1505,8 +1329,6 @@
             });
             sendEl.addEventListener("click", sendMessage);
             modelEl.addEventListener("change", saveChatState);
-            baseUrlEl.addEventListener("change", loadModels);
-            baseUrlEl.addEventListener("input", scheduleLoadModels);
             promptEl.addEventListener("input", autosizePrompt);
             promptEl.addEventListener("keydown", function(e) {
                 if (e.key !== "Enter" || e.isComposing) return;
@@ -1532,10 +1354,8 @@
             });
 
             restoreChatState();
-            loadModels();
             checkHealth();
             autosizePrompt();
         })();
     </script>
-</body>
-</html>
+{% endblock %}

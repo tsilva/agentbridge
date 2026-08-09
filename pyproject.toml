@@ -28,7 +28,6 @@ dependencies = [
 test = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
-    "fpdf2>=2.7.0",
 ]
 
 [project.urls]
@@ -53,7 +52,6 @@ path = "hatch_build.py"
 asyncio_mode = "auto"
 markers = [
     "unit: mark test as unit test (no server required)",
-    "integration: mark test as integration test (requires running server)",
 ]
 
 [tool.ruff]

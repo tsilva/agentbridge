@@ -8,12 +8,11 @@ Usage:
 import json
 import os
 import time
-from datetime import datetime
 from unittest.mock import patch
 
 import pytest
 
-from agentbridge.models import Message
+from agentbridge.models import ImageUrl, ImageUrlContent, Message, TextContent
 from agentbridge.server import SessionLogger
 
 
@@ -66,14 +65,11 @@ class TestSessionLoggerOperations:
         del os.environ["LOG_DIR"]
 
     def test_log_chunk(self):
-        """Chunks are recorded with timestamps."""
+        """Chunks are recorded in order."""
         logger = SessionLogger("test-123", "sonnet")
         logger.log_chunk("Hello ")
         logger.log_chunk("World")
-        assert len(logger.chunks) == 2
-        assert logger.chunks[0][1] == "Hello "
-        assert logger.chunks[1][1] == "World"
-        assert isinstance(logger.chunks[0][0], datetime)
+        assert logger.chunks == ["Hello ", "World"]
 
     def test_log_finish(self):
         """Finish reason is recorded."""
@@ -163,6 +159,49 @@ class TestSessionLoggerWrite:
         assert data["messages"][0]["role"] == "system"
         assert data["messages"][1]["role"] == "user"
         assert data["messages"][1]["content"] == "Hello"
+
+    def test_write_extracts_attachments_once_for_log_and_files(self):
+        """Attachment metadata and saved data come from the same extraction."""
+        logger = SessionLogger("test-attachments", "sonnet")
+        messages = [
+            Message(
+                role="user",
+                content=[
+                    TextContent(type="text", text="Review these"),
+                    ImageUrlContent(
+                        type="image_url",
+                        image_url=ImageUrl(
+                            url="data:image/png;base64,aGVsbG8="
+                        ),
+                    ),
+                    ImageUrlContent(
+                        type="image_url",
+                        image_url=ImageUrl(url="https://example.com/photo.jpg"),
+                    ),
+                ],
+            )
+        ]
+
+        logger.write(messages, stream=False, temperature=None, max_tokens=None)
+
+        data = self._read_log(logger)
+        assert data["attachments"] == [
+            {
+                "msg_index": 0,
+                "att_index": 0,
+                "media_type": "image/png",
+                "filename": "msg0_att0.png",
+            },
+            {
+                "msg_index": 0,
+                "att_index": 1,
+                "media_type": "image/unknown",
+                "filename": "msg0_att1.jpg",
+            },
+        ]
+        attachment_dir = self.log_dir / "test-attachments_attachments"
+        assert (attachment_dir / "msg0_att0.png").read_bytes() == b"hello"
+        assert not (attachment_dir / "msg0_att1.jpg").exists()
 
     def test_write_contains_response(self):
         """JSON log contains full response text."""

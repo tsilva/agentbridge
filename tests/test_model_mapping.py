@@ -11,7 +11,9 @@ import pytest
 
 from agentbridge.models import (
     AVAILABLE_MODELS,
+    CODEX_DEFAULT_REASONING_EFFORT_BY_MODEL,
     CODEX_MODEL_SLUGS,
+    CODEX_MODELS,
     SIMPLE_NAMES,
     UnsupportedModelError,
     resolve_model,
@@ -129,6 +131,12 @@ class TestCodexModels:
         assert result.provider == "codex"
         assert result.model == "gpt-5.5"
 
+    def test_resolve_gpt56_sol_slug(self):
+        """Codex gpt-5.6-sol slug resolves to Codex provider."""
+        result = resolve_model_request("codex/gpt-5.6-sol")
+        assert result.provider == "codex"
+        assert result.model == "gpt-5.6-sol"
+
     def test_resolve_codex_provider_prefix(self):
         """codex/<model> prefix routes to Codex."""
         result = resolve_model_request("codex/gpt-5.5")
@@ -220,6 +228,15 @@ class TestMappingConsistency:
             assert f"claudecode/{name}" in slugs
         for name in CODEX_MODEL_SLUGS:
             assert f"codex/{name}" in slugs
+
+    def test_codex_catalog_derives_public_views(self):
+        """Codex discovery and reasoning defaults come from one catalog."""
+        assert CODEX_MODEL_SLUGS == set(CODEX_MODELS)
+        assert CODEX_DEFAULT_REASONING_EFFORT_BY_MODEL == {
+            model: effort
+            for model, effort in CODEX_MODELS.items()
+            if effort is not None
+        }
 
     def test_available_models_format(self):
         """Available models have expected format and are resolvable."""

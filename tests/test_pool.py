@@ -53,41 +53,19 @@ class TestMakeOptions:
         opts = make_options("opus")
         assert opts.env["CLAUDE_CODE_BRIDGE"] == "1"
 
-    def test_make_options_with_max_tokens(self):
-        """Options with max_tokens set."""
-        opts = make_options("opus", max_tokens=1024)
-        assert opts.max_tokens == 1024
-
-    def test_make_options_without_max_tokens(self):
-        """Options without max_tokens leaves it unset."""
-        opts = make_options("opus")
-        # Should not have max_tokens set (or default)
-        assert not hasattr(opts, 'max_tokens') or opts.max_tokens is None
-
-
 @pytest.mark.unit
 class TestClientPoolInit:
     """Tests for ClientPool initialization."""
 
     def test_default_pool_size(self):
-        """Default pool size is 3."""
+        """Default pool size matches the application default."""
         pool = ClientPool()
-        assert pool.size == 3
+        assert pool.size == 1
 
     def test_custom_pool_size(self):
         """Custom pool size."""
         pool = ClientPool(size=5)
         assert pool.size == 5
-
-    def test_default_model(self):
-        """Default model is opus."""
-        pool = ClientPool()
-        assert pool.default_model == "opus"
-
-    def test_custom_default_model(self):
-        """Custom default model."""
-        pool = ClientPool(default_model="sonnet")
-        assert pool.default_model == "sonnet"
 
     def test_initial_state(self):
         """Initial state is empty."""
@@ -105,7 +83,7 @@ class TestClientPoolInitialize:
 
     async def test_initialize_does_not_create_clients(self):
         """Initialize marks the pool ready without creating clients."""
-        pool = ClientPool(size=2, default_model="opus")
+        pool = ClientPool(size=2)
 
         with patch("claude_agent_sdk.ClaudeSDKClient") as MockClient:
             mock_instance = AsyncMock()
@@ -122,7 +100,7 @@ class TestClientPoolInitialize:
 
     async def test_first_acquire_sets_model(self):
         """First acquire creates a client with the requested model."""
-        pool = ClientPool(size=2, default_model="sonnet")
+        pool = ClientPool(size=2)
 
         with patch("claude_agent_sdk.ClaudeSDKClient") as MockClient:
             mock_client = _make_mock_client()
@@ -159,7 +137,7 @@ class TestClientPoolAcquire:
 
     async def test_acquire_matching_model(self):
         """Acquire returns an idle client for matching model."""
-        pool = ClientPool(size=1, default_model="opus")
+        pool = ClientPool(size=1)
 
         with patch("claude_agent_sdk.ClaudeSDKClient") as MockClient:
             mock_client = _make_mock_client()
@@ -179,7 +157,7 @@ class TestClientPoolAcquire:
 
     async def test_acquire_different_model_discards_idle(self):
         """Acquire with different model discards an idle client when full."""
-        pool = ClientPool(size=1, default_model="opus")
+        pool = ClientPool(size=1)
 
         with patch("claude_agent_sdk.ClaudeSDKClient") as MockClient:
             mock_opus = _make_mock_client()
@@ -200,7 +178,7 @@ class TestClientPoolAcquire:
 
     async def test_acquire_returns_after_success(self):
         """Client is returned to the idle pool after successful use."""
-        pool = ClientPool(size=1, default_model="opus")
+        pool = ClientPool(size=1)
 
         with patch("claude_agent_sdk.ClaudeSDKClient") as MockClient:
             mock_client = _make_mock_client()
@@ -218,7 +196,7 @@ class TestClientPoolAcquire:
 
     async def test_acquire_destroys_after_error(self):
         """Client is destroyed after an unsuccessful use."""
-        pool = ClientPool(size=1, default_model="opus")
+        pool = ClientPool(size=1)
 
         with patch("claude_agent_sdk.ClaudeSDKClient") as MockClient:
             mock_client = _make_mock_client()
@@ -237,7 +215,7 @@ class TestClientPoolAcquire:
 
     async def test_successful_acquire_does_not_create_replacement(self):
         """Acquire reuses the same client instead of creating replacements."""
-        pool = ClientPool(size=2, default_model="opus")
+        pool = ClientPool(size=2)
 
         with patch("claude_agent_sdk.ClaudeSDKClient") as MockClient:
             mock_client = _make_mock_client()
@@ -255,7 +233,7 @@ class TestClientPoolAcquire:
 
     async def test_sequential_requests_reuse_client(self):
         """Sequential requests for the same model reuse the same client."""
-        pool = ClientPool(size=1, default_model="opus")
+        pool = ClientPool(size=1)
 
         with patch("claude_agent_sdk.ClaudeSDKClient") as MockClient:
             client = _make_mock_client()
@@ -278,7 +256,7 @@ class TestClientPoolAcquire:
 
     async def test_acquire_concurrent_limit(self):
         """Concurrent acquisitions limited by pool size."""
-        pool = ClientPool(size=2, default_model="opus")
+        pool = ClientPool(size=2)
 
         with patch("claude_agent_sdk.ClaudeSDKClient") as MockClient:
             MockClient.side_effect = lambda *a, **kw: _make_mock_client()
@@ -312,7 +290,7 @@ class TestClientPoolAcquire:
 
     async def test_acquire_semaphore_timeout(self):
         """Acquire raises 503 when semaphore times out."""
-        pool = ClientPool(size=1, default_model="opus")
+        pool = ClientPool(size=1)
         pool._acquire_timeout = 0.1  # Very short timeout
 
         with patch("claude_agent_sdk.ClaudeSDKClient") as MockClient:
@@ -340,7 +318,7 @@ class TestClientPoolReuse:
 
     async def test_successful_request_returns_idle_client(self):
         """A successful request adds the client to the available list."""
-        pool = ClientPool(size=2, default_model="opus")
+        pool = ClientPool(size=2)
 
         with patch("claude_agent_sdk.ClaudeSDKClient") as MockClient:
             MockClient.side_effect = lambda *a, **kw: _make_mock_client()
@@ -356,7 +334,7 @@ class TestClientPoolReuse:
 
     async def test_reuse_respects_pool_size(self):
         """Returned idle clients do not grow the pool beyond size."""
-        pool = ClientPool(size=1, default_model="opus")
+        pool = ClientPool(size=1)
 
         with patch("claude_agent_sdk.ClaudeSDKClient") as MockClient:
             MockClient.return_value = _make_mock_client()
@@ -381,7 +359,7 @@ class TestClientPoolShutdown:
 
     async def test_shutdown_disconnects_all(self):
         """Shutdown disconnects all clients."""
-        pool = ClientPool(size=2, default_model="opus")
+        pool = ClientPool(size=2)
 
         with patch("claude_agent_sdk.ClaudeSDKClient") as MockClient:
             mock_clients = [_make_mock_client() for _ in range(2)]
@@ -402,7 +380,7 @@ class TestClientPoolShutdown:
 
     async def test_shutdown_clears_state(self):
         """Shutdown clears all pool state."""
-        pool = ClientPool(size=1, default_model="opus")
+        pool = ClientPool(size=1)
 
         with patch("claude_agent_sdk.ClaudeSDKClient") as MockClient:
             mock_client = _make_mock_client()
@@ -420,7 +398,7 @@ class TestClientPoolShutdown:
 
     async def test_shutdown_cancels_health_check(self):
         """Shutdown cancels the periodic health check task."""
-        pool = ClientPool(size=1, default_model="opus")
+        pool = ClientPool(size=1)
 
         with patch("claude_agent_sdk.ClaudeSDKClient") as MockClient:
             mock_client = _make_mock_client()
@@ -440,7 +418,7 @@ class TestClientPoolModelTracking:
 
     async def test_model_tracked_per_client(self):
         """Each client tracks its model."""
-        pool = ClientPool(size=2, default_model="opus")
+        pool = ClientPool(size=2)
 
         with patch("claude_agent_sdk.ClaudeSDKClient") as MockClient:
             mock_clients = [_make_mock_client() for _ in range(2)]
@@ -464,7 +442,7 @@ class TestClientPoolStatus:
 
     async def test_status_returns_metrics(self):
         """Status returns pool size, available, in_use, and models."""
-        pool = ClientPool(size=2, default_model="opus")
+        pool = ClientPool(size=2)
 
         with patch("claude_agent_sdk.ClaudeSDKClient") as MockClient:
             mock_clients = [_make_mock_client() for _ in range(2)]
@@ -482,7 +460,7 @@ class TestClientPoolStatus:
 
     async def test_status_during_acquire(self):
         """Status reflects in-use clients during acquire."""
-        pool = ClientPool(size=2, default_model="opus")
+        pool = ClientPool(size=2)
 
         with patch("claude_agent_sdk.ClaudeSDKClient") as MockClient:
             mock_clients = [_make_mock_client() for _ in range(3)]
@@ -505,7 +483,7 @@ class TestClientPoolSnapshot:
 
     async def test_snapshot_returns_state(self):
         """Snapshot returns size, in_use, available, available_models, all_models."""
-        pool = ClientPool(size=2, default_model="opus")
+        pool = ClientPool(size=2)
 
         with patch("claude_agent_sdk.ClaudeSDKClient") as MockClient:
             mock_clients = [_make_mock_client() for _ in range(3)]
@@ -532,7 +510,7 @@ class TestCreateClientCleanup:
 
     async def test_create_client_disconnects_on_non_timeout_error(self):
         """disconnect() must be called when connect() raises a non-timeout exception."""
-        pool = ClientPool(size=1, default_model="opus")
+        pool = ClientPool(size=1)
 
         with patch("claude_agent_sdk.ClaudeSDKClient") as MockClient:
             mock_client = AsyncMock()
@@ -547,7 +525,7 @@ class TestCreateClientCleanup:
 
     async def test_create_client_disconnects_on_timeout_error(self):
         """disconnect() is called on TimeoutError (regression guard)."""
-        pool = ClientPool(size=1, default_model="opus")
+        pool = ClientPool(size=1)
 
         with patch("claude_agent_sdk.ClaudeSDKClient") as MockClient:
             mock_client = AsyncMock()
@@ -567,7 +545,7 @@ class TestHealthCheck:
 
     async def test_health_check_replaces_dead_client(self):
         """Dead subprocess (returncode != None) is detected and removed."""
-        pool = ClientPool(size=1, default_model="opus")
+        pool = ClientPool(size=1)
 
         # Use spec to restrict attributes — prevents hasattr() from auto-returning True
         dead_client = AsyncMock(spec=["connect", "disconnect", "_transport"])
@@ -588,7 +566,7 @@ class TestHealthCheck:
 
     async def test_health_check_keeps_alive_client(self):
         """Healthy subprocess (returncode=None) is kept in pool."""
-        pool = ClientPool(size=1, default_model="opus")
+        pool = ClientPool(size=1)
 
         alive_client = AsyncMock(spec=["connect", "disconnect", "_transport"])
         alive_client._transport = AsyncMock()
@@ -605,7 +583,7 @@ class TestHealthCheck:
 
     async def test_health_check_client_without_transport(self):
         """Client without _transport attribute is not treated as dead."""
-        pool = ClientPool(size=1, default_model="opus")
+        pool = ClientPool(size=1)
 
         # No _transport in spec — simulates client before transport is set up
         no_transport_client = AsyncMock(spec=["connect", "disconnect"])
@@ -626,7 +604,7 @@ class TestClientPoolRequestIdLogging:
 
     async def test_acquire_logs_request_id(self, caplog):
         """Acquire logs include request ID when provided."""
-        pool = ClientPool(size=1, default_model="opus")
+        pool = ClientPool(size=1)
 
         with patch("claude_agent_sdk.ClaudeSDKClient") as MockClient:
             mock_client = _make_mock_client()

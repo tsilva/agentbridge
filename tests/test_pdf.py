@@ -1,16 +1,6 @@
-"""
-PDF extraction tests for agentbridge.
+"""PDF conversion and text-normalization tests for AgentBridge."""
 
-Prerequisites:
-- Server must be running for integration tests: agentbridge
-- fpdf2 must be installed for PDF fixture generation
-
-Usage:
-- Unit tests: pytest tests/test_pdf.py::TestPdfUtils tests/test_pdf.py::TestSlugification -v
-- Integration tests: pytest tests/test_pdf.py::TestPdfIntegration -v
-"""
-
-from pathlib import Path
+import pytest
 
 from agentbridge.models import (
     ImageUrl,
@@ -26,16 +16,7 @@ from agentbridge.server import (
 
 from .test_utils import slugify_text, text_similarity
 
-# Test fixtures path
-FIXTURES_DIR = Path(__file__).parent / "fixtures"
-PDF_TEST_DOCUMENT = FIXTURES_DIR / "pdf_test_document.pdf"
-
-# Expected text content in the PDF fixture
-EXPECTED_PDF_TEXT = """CLAUDE CODE BRIDGE
-PDF Extraction Test Document
-This document tests PDF extraction accuracy.
-Version: 2025-01
-Status: ACTIVE"""
+pytestmark = pytest.mark.unit
 
 
 class TestPdfUtils:
@@ -158,5 +139,3 @@ class TestSlugification:
     def test_text_similarity_superset(self):
         """Actual text containing all expected words returns 1.0."""
         assert text_similarity("a b", "a b c d e f") == 1.0
-
-

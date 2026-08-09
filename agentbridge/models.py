@@ -176,13 +176,20 @@ SIMPLE_NAMES = CLAUDE_SIMPLE_NAMES
 
 PROVIDER_NAMES: set[str] = {"claudecode", "codex", "openrouter"}
 
-CODEX_MODEL_SLUGS: set[str] = {
-    "gpt-5.5",
-    "gpt-5.4",
-    "gpt-5.4-mini",
-    "gpt-5.3-codex",
-    "gpt-5.3-codex-spark",
-    "gpt-5.2",
+CODEX_MODELS: dict[str, ReasoningEffort | None] = {
+    "gpt-5.6-sol": "high",
+    "gpt-5.5": "high",
+    "gpt-5.4": None,
+    "gpt-5.4-mini": None,
+    "gpt-5.3-codex": None,
+    "gpt-5.3-codex-spark": None,
+    "gpt-5.2": None,
+}
+
+# Backwards-compatible catalog views used by tests and callers.
+CODEX_MODEL_SLUGS: set[str] = set(CODEX_MODELS)
+CODEX_DEFAULT_REASONING_EFFORT_BY_MODEL: dict[str, ReasoningEffort] = {
+    model: effort for model, effort in CODEX_MODELS.items() if effort is not None
 }
 
 OPENROUTER_EXAMPLE_SLUGS: set[str] = {

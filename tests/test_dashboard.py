@@ -35,8 +35,6 @@ class TestActiveRequest:
         d = req.to_dict()
         assert d["request_id"] == "req-1"
         assert d["model"] == "sonnet"
-        assert d["status"] == "active"
-        assert d["chunks_received"] == 0
         assert isinstance(d["elapsed_s"], float)
 
     def test_elapsed_increases(self):
@@ -114,17 +112,8 @@ class TestMultipleActiveRequests:
 
 
 @pytest.mark.unit
-class TestChunkCounting:
-    """Tests for chunk counting."""
-
-    def test_chunks_increment(self):
-        """chunk_received increments the counter."""
-        state = DashboardState()
-        state.request_started("req-1", "opus")
-        state.chunk_received("req-1", "hello")
-        state.chunk_received("req-1", " world")
-        active = state.get_active_requests()
-        assert active[0]["chunks_received"] == 2
+class TestChunkHandling:
+    """Tests for chunk handling."""
 
     def test_chunk_unknown_request_no_error(self):
         """Sending a chunk to an unknown request does not raise."""
@@ -407,7 +396,7 @@ class TestDashboardChatPage:
         assert 'accept="image/*,application/pdf,text/plain,.txt"' in resp.text
         assert "is not an image, PDF, or TXT file" in resp.text
         assert "autosizePrompt" in resp.text
-        assert "supportsStreaming" in resp.text
+        assert "supportsStreaming" not in resp.text
         assert "Base URL" not in resp.text
         assert '<input id="base-url" type="hidden" value="/api/v1">' in resp.text
         assert "message-info" in resp.text
@@ -420,6 +409,7 @@ class TestDashboardChatPage:
         assert 'class="main-nav"' in resp.text
         assert 'class="nav-item" href="/dashboard">Monitor</a>' in resp.text
         assert 'class="nav-item active" href="/dashboard/chat">Chat</a>' in resp.text
+        assert '<option value="codex/gpt-5.6-sol">codex/gpt-5.6-sol</option>' in resp.text
         assert 'if (e.key !== "Enter" || e.isComposing) return;' in resp.text
         assert "if (e.altKey) return;" in resp.text
         assert "e.preventDefault();" in resp.text
@@ -428,11 +418,15 @@ class TestDashboardChatPage:
         assert "typing-indicator" in resp.text
         assert "Assistant is typing" in resp.text
         assert 'loading: true' in resp.text
-        assert 'baseUrlEl.addEventListener("change", loadModels)' in resp.text
-        assert 'baseUrlEl.addEventListener("input", scheduleLoadModels)' in resp.text
+        assert "loadModels" not in resp.text
+        assert "responseText" not in resp.text
+        assert "stream: true" in resp.text
         assert "var conversationMessages = []" in resp.text
         assert "messages: conversationMessages.concat([userMessage])" in resp.text
-        assert 'conversationMessages.push({ role: "assistant", content: assistantText })' in resp.text
+        assert (
+            'conversationMessages.push({ role: "assistant", content: streamedText })'
+            in resp.text
+        )
         assert "Copy cURL" not in resp.text
         assert 'id="stream"' not in resp.text
 
@@ -553,6 +547,24 @@ class TestDashboardRequests:
         assert "chatcmpl-11000001" in content or "11000001" in content
         assert "chatcmpl-d0000001" in content or "d0000001" in content
         assert "request-row-active" in content
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/dashboard/request/not-valid",
+        "/dashboard/log/not-valid",
+        "/dashboard/attachment/not-valid/file.txt",
+        "/dashboard/stream/not-valid",
+    ],
+)
+def test_dashboard_routes_reject_invalid_request_ids(path):
+    """Every request-specific dashboard route applies the same validation."""
+    client = TestClient(_make_app())
+    response = client.get(path)
+    assert response.status_code == 400
+    assert response.json() == {"detail": "Invalid request ID"}
 
 
 @pytest.mark.unit

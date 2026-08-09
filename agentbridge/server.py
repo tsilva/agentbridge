@@ -23,13 +23,17 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from . import __version__
-from .config import ensure_user_config, load_user_env, session_log_dir, user_env_path
-
-load_user_env()
-
+from .config import (
+    DEFAULT_POOL_SIZE,
+    ensure_user_config,
+    load_user_env,
+    session_log_dir,
+    user_env_path,
+)
 from .dashboard import DashboardState, create_dashboard_router
 from .models import (
     AVAILABLE_MODELS,
+    CODEX_DEFAULT_REASONING_EFFORT_BY_MODEL,
     ChatCompletionChunk,
     ChatCompletionRequest,
     ChatCompletionResponse,
@@ -54,6 +58,8 @@ from .models import (
     resolve_model_request,
 )
 from .pool import ClientPool
+
+load_user_env()
 
 # Claude palette (24-bit true color)
 _CLAUDE = "\033[38;2;218;119;86m"  # Terracotta — Claude's signature orange
@@ -123,55 +129,8 @@ class AttachmentInfo:
     msg_index: int
     att_index: int
     media_type: str
-    content_type: str  # "base64" or "url"
-    data: bytes | None  # decoded binary data (base64 only)
-    url: str | None  # original HTTP URL (url only)
+    data: str | None  # undecoded base64 data; None for remote URLs
     filename: str  # e.g. "msg0_att0.png"
-
-
-def extract_attachment_metadata(
-    messages: list,
-) -> list[dict]:
-    """Extract attachment metadata from multimodal messages without decoding binary data.
-
-    Returns lightweight dicts with msg_index, att_index, media_type, filename.
-    Used for logging — avoids the memory/CPU cost of base64 decoding.
-    """
-    result = []
-    for msg_idx, msg in enumerate(messages):
-        if not isinstance(msg.content, list):
-            continue
-        att_idx = 0
-        for part in msg.content:
-            if not isinstance(part, ImageUrlContent):
-                continue
-            url = part.image_url.url
-            if is_data_url(url):
-                media_type, _ = parse_data_url(url)
-                ext = EXTENSION_MAP.get(media_type, ".bin")
-                filename = f"msg{msg_idx}_att{att_idx}{ext}"
-                result.append({
-                    "msg_index": msg_idx,
-                    "att_index": att_idx,
-                    "media_type": media_type,
-                    "filename": filename,
-                })
-            elif is_http_url(url):
-                ext = ".png"
-                parsed_path = urllib.parse.urlparse(url).path.lower()
-                for mt, e in EXTENSION_MAP.items():
-                    if parsed_path.endswith(e):
-                        ext = e
-                        break
-                filename = f"msg{msg_idx}_att{att_idx}{ext}"
-                result.append({
-                    "msg_index": msg_idx,
-                    "att_index": att_idx,
-                    "media_type": "image/unknown",
-                    "filename": filename,
-                })
-            att_idx += 1
-    return result
 
 
 def extract_attachments_from_messages(
@@ -200,9 +159,7 @@ def extract_attachments_from_messages(
                         msg_index=msg_idx,
                         att_index=att_idx,
                         media_type=media_type,
-                        content_type="base64",
-                        data=base64.b64decode(b64_data),
-                        url=None,
+                        data=b64_data,
                         filename=filename,
                     )
                 )
@@ -219,9 +176,7 @@ def extract_attachments_from_messages(
                         msg_index=msg_idx,
                         att_index=att_idx,
                         media_type="image/unknown",
-                        content_type="url",
                         data=None,
-                        url=url,
                         filename=filename,
                     )
                 )
@@ -341,7 +296,7 @@ class SessionLogger:
         self.model = model
         self.api_key = api_key
         self.start_time = datetime.now(timezone.utc)
-        self.chunks: list[tuple[datetime, str]] = []
+        self.chunks: list[str] = []
         self.finish_reason: str | None = None
         self.error: str | None = None
         self.acquire_ms: int | None = None
@@ -357,8 +312,8 @@ class SessionLogger:
         self.log_path = self.log_dir / f"{request_id}.json"
 
     def log_chunk(self, content: str) -> None:
-        """Record a streaming chunk with timestamp."""
-        self.chunks.append((datetime.now(timezone.utc), content))
+        """Record a response chunk."""
+        self.chunks.append(content)
 
     def log_finish(self, reason: str) -> None:
         """Record the finish reason."""
@@ -395,7 +350,7 @@ class SessionLogger:
         """Write the complete session log as JSON."""
         end_time = datetime.now(timezone.utc)
         duration_ms = int((end_time - self.start_time).total_seconds() * 1000)
-        full_response = "".join(content for _, content in self.chunks)
+        full_response = "".join(self.chunks)
 
         # Format messages for JSON
         msg_list = []
@@ -420,13 +375,6 @@ class SessionLogger:
         if self.output_tokens is not None:
             usage["output_tokens"] = self.output_tokens
 
-        # Build attachments metadata (no base64 decode needed for logging)
-        att_meta = []
-        try:
-            att_meta = extract_attachment_metadata(messages)
-        except Exception:
-            pass
-
         data = {
             "request_id": self.request_id,
             "model": self.model,
@@ -450,13 +398,27 @@ class SessionLogger:
             "exception_type": self.exception_type,
             "traceback": self.traceback_str,
             "pool_snapshot": self.pool_snapshot,
-            "attachments": att_meta,
+            "attachments": [],
         }
 
         def _do_write() -> None:
+            try:
+                attachments = extract_attachments_from_messages(messages)
+            except Exception as e:
+                logging.warning(f"[session_logger] Failed to read attachments: {e}")
+                attachments = []
+            data["attachments"] = [
+                {
+                    "msg_index": attachment.msg_index,
+                    "att_index": attachment.att_index,
+                    "media_type": attachment.media_type,
+                    "filename": attachment.filename,
+                }
+                for attachment in attachments
+            ]
             with open(self.log_path, "w") as f:
                 json.dump(data, f, indent=2)
-            self._save_attachments(messages)
+            self._save_attachments(attachments)
             self._cleanup_old_logs()
 
         try:
@@ -475,10 +437,9 @@ class SessionLogger:
             # No running event loop (e.g. tests) — run synchronously
             _do_write()
 
-    def _save_attachments(self, messages: list) -> None:
+    def _save_attachments(self, attachments: list[AttachmentInfo]) -> None:
         """Save binary attachments alongside the log file."""
         try:
-            attachments = extract_attachments_from_messages(messages)
             if not attachments:
                 return
 
@@ -486,8 +447,8 @@ class SessionLogger:
             att_dir.mkdir(parents=True, exist_ok=True)
 
             for att in attachments:
-                if att.content_type == "base64" and att.data:
-                    (att_dir / att.filename).write_bytes(att.data)
+                if att.data:
+                    (att_dir / att.filename).write_bytes(base64.b64decode(att.data))
 
             logging.info(
                 f"[session_logger] Saved {len(attachments)} attachment(s) "
@@ -525,7 +486,7 @@ class SessionLogger:
 # Runtime configuration
 pool: ClientPool | None = None
 _pool_lock: asyncio.Lock | None = None
-_pool_size = 1
+_pool_size = DEFAULT_POOL_SIZE
 codex_semaphore: asyncio.Semaphore | None = None
 dashboard_state = DashboardState()
 
@@ -539,11 +500,6 @@ _UNSUPPORTED_PARAMS = {
     "top_logprobs", "parallel_tool_calls", "stream_options", "user",
     "max_tokens",  # Accepted but not supported by Claude SDK client options here
 }
-
-CODEX_DEFAULT_REASONING_EFFORT_BY_MODEL: dict[str, ReasoningEffort] = {
-    "gpt-5.5": "high",
-}
-
 
 def _warn_unsupported_params(
     request: "ChatCompletionRequest",
@@ -602,7 +558,6 @@ async def ensure_claude_pool() -> ClientPool:
             return pool
         new_pool = ClientPool(
             size=_pool_size,
-            default_model="opus",
             on_change=dashboard_state.notify_pool_change,
         )
         await new_pool.initialize()
@@ -614,7 +569,7 @@ async def ensure_claude_pool() -> ClientPool:
 async def lifespan(app: FastAPI):
     """Manage application lifespan - initialize and shutdown provider resources."""
     global pool, _pool_lock, _pool_size, codex_semaphore
-    _pool_size = int(os.environ.get("POOL_SIZE", 1))
+    _pool_size = int(os.environ.get("POOL_SIZE", DEFAULT_POOL_SIZE))
     _pool_lock = asyncio.Lock()
     codex_semaphore = asyncio.Semaphore(_pool_size)
 
@@ -1258,7 +1213,7 @@ async def call_codex_cli(
             f"tokens={usage_dict['prompt_tokens']}in/{usage_dict['completion_tokens']}out"
         )
         session_logger.log_finish(response.finish_reason)
-        dashboard_state.request_completed(request_id, usage=usage_dict)
+        dashboard_state.request_completed(request_id)
         return response
     except asyncio.TimeoutError:
         session_logger.log_error(
@@ -1465,7 +1420,7 @@ async def call_openrouter_api(
 
         logging.info(f"[{request_id}] Completed openrouter | query={query_ms}ms")
         session_logger.log_finish(response.finish_reason)
-        dashboard_state.request_completed(request_id, usage=response.get_usage())
+        dashboard_state.request_completed(request_id)
         return response
     except Exception as e:
         error = (
@@ -1524,7 +1479,6 @@ async def stream_openrouter_api(
     )
     created = int(time.time())
     finish_reason = "stop"
-    stream_usage: Usage | None = None
     _dashboard_handled = False
     query_start = time.monotonic()
 
@@ -1548,7 +1502,6 @@ async def stream_openrouter_api(
 
             usage = _usage_from_openrouter(chunk)
             if usage:
-                stream_usage = Usage(**usage)
                 session_logger.log_usage(
                     usage["prompt_tokens"],
                     usage["completion_tokens"],
@@ -1567,10 +1520,9 @@ async def stream_openrouter_api(
 
         query_ms = int((time.monotonic() - query_start) * 1000)
         session_logger.log_timing(0, query_ms)
-        usage_dict = stream_usage.model_dump() if stream_usage else {}
         logging.info(f"[{request_id}] Completed openrouter | query={query_ms}ms")
         session_logger.log_finish(finish_reason)
-        dashboard_state.request_completed(request_id, usage=usage_dict)
+        dashboard_state.request_completed(request_id)
         _dashboard_handled = True
         yield "data: [DONE]\n\n"
     except Exception as e:
@@ -1698,7 +1650,7 @@ async def call_claude_sdk(
             f"tokens={usage['prompt_tokens']}in/{usage['completion_tokens']}out"
         )
         session_logger.log_finish(response.finish_reason)
-        dashboard_state.request_completed(request_id, usage=usage)
+        dashboard_state.request_completed(request_id)
     except asyncio.TimeoutError:
         snap = pool.snapshot() if pool is not None else {}
         logging.error(f"[{request_id}] Timeout after {CLAUDE_TIMEOUT}s | pool={snap}")
@@ -1890,7 +1842,7 @@ async def stream_claude_sdk(
             f"{usage_dict.get('completion_tokens', 0)}out"
         )
         session_logger.log_finish(finish_reason)
-        dashboard_state.request_completed(request_id, usage=usage_dict)
+        dashboard_state.request_completed(request_id)
         _dashboard_handled = True
 
         # Send final chunk with usage data
@@ -2168,7 +2120,7 @@ async def stream_codex_cli(
             f"{usage_dict.get('completion_tokens', 0)}out"
         )
         session_logger.log_finish(finish_reason)
-        dashboard_state.request_completed(request_id, usage=usage_dict)
+        dashboard_state.request_completed(request_id)
         _dashboard_handled = True
 
         final_chunk = ChatCompletionChunk(
@@ -2454,8 +2406,8 @@ def main():
         "-w",
         "--workers",
         type=int,
-        default=1,
-        help="Number of pooled clients (default: 1)",
+        default=int(os.environ.get("POOL_SIZE", DEFAULT_POOL_SIZE)),
+        help=f"Number of pooled clients (default: POOL_SIZE or {DEFAULT_POOL_SIZE})",
     )
     parser.add_argument(
         "--port",

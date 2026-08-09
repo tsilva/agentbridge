@@ -21,7 +21,7 @@ Model IDs must start with an AgentBridge provider namespace:
 
 **Supported formats:**
 - Claude Code: `claudecode/opus`, `claudecode/sonnet`, `claudecode/haiku`, or slugs containing those names, such as `claudecode/anthropic/claude-sonnet-4`
-- Codex CLI: `codex/<model>`, such as `codex/gpt-5.5`
+- Codex CLI: `codex/<model>`, such as `codex/gpt-5.6-sol`
 - OpenRouter: `openrouter/<provider>/<model>`, such as `openrouter/anthropic/claude-sonnet-4`
 
 **Examples:**
@@ -30,7 +30,11 @@ Model IDs must start with an AgentBridge provider namespace:
 client.chat.completions.create(model="claudecode/sonnet", ...)
 
 # Codex CLI
-client.chat.completions.create(model="codex/gpt-5.5", ...)
+client.chat.completions.create(
+    model="codex/gpt-5.6-sol",
+    reasoning_effort="high",
+    messages=[...],
+)
 
 # OpenRouter
 client.chat.completions.create(model="openrouter/anthropic/claude-sonnet-4", ...)
@@ -52,7 +56,7 @@ agentbridge/
 ## Key Implementation Details
 
 - **Client Pool**: Lazy reusable Claude SDK clients — clients are created on first use for the requested model, returned to an idle pool after successful requests, and capped by the worker count. No clients are warmed at server boot.
-- **Concurrency**: Worker count controls concurrent requests (default: 3, configurable via `--workers`/`-w` flag or `POOL_SIZE` env var)
+- **Concurrency**: Worker count controls concurrent requests (default: 1, configurable via `--workers`/`-w` flag or `POOL_SIZE` env var)
 - **Streaming**: SSE format matching OpenAI's streaming response
 - **Model selection**: Resolves required provider prefixes (`claudecode/`, `codex/`, `openrouter/`) before dispatch. Model parameter is required.
 - **Pure chat mode**: Tools are disabled (`tools=[]`) - Claude operates as a conversational assistant without file access, bash commands, or web access
@@ -79,7 +83,7 @@ curl http://localhost:8082/api/v1/chat/completions \
 # Using Codex
 curl http://localhost:8082/api/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -d '{"model": "codex/gpt-5.5", "messages": [{"role": "user", "content": "Hello!"}]}'
+  -d '{"model": "codex/gpt-5.6-sol", "reasoning_effort": "high", "messages": [{"role": "user", "content": "Hello!"}]}'
 
 # Streaming
 curl http://localhost:8082/api/v1/chat/completions \

@@ -5,7 +5,6 @@ import json
 import logging
 import re
 import time
-from collections import deque
 from pathlib import Path
 from typing import Callable
 
@@ -13,11 +12,11 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
-from .config import load_user_env, session_log_dir
-
-load_user_env()
+from .config import session_log_dir
+from .models import AVAILABLE_MODELS
 
 logger = logging.getLogger(__name__)
+_REQUEST_ID_PATTERN = re.compile(r"chatcmpl-[a-f0-9]{8,32}")
 
 
 # ---------------------------------------------------------------------------
@@ -32,8 +31,6 @@ class _ActiveRequest:
         "model",
         "api_key",
         "start_time",
-        "status",
-        "chunks_received",
         "messages",
         "buffered_text",
         "_subscribers",
@@ -50,8 +47,6 @@ class _ActiveRequest:
         self.model = model
         self.api_key = api_key
         self.start_time = time.monotonic()
-        self.status = "active"
-        self.chunks_received = 0
         self.messages = messages or []
         self.buffered_text = ""
         self._subscribers: list[asyncio.Queue] = []
@@ -62,8 +57,6 @@ class _ActiveRequest:
             "model": self.model,
             "api_key": _mask_api_key(self.api_key),
             "elapsed_s": round(time.monotonic() - self.start_time, 2),
-            "status": self.status,
-            "chunks_received": self.chunks_received,
             "messages": self.messages,
             "buffered_text": self.buffered_text,
         }
@@ -72,15 +65,10 @@ class _ActiveRequest:
 class DashboardState:
     """Tracks active requests so the dashboard can display them and stream tokens."""
 
-    # How many recently completed requests to keep usage data for
-    _RECENT_LIMIT = 50
-
     def __init__(self):
         self._active: dict[str, _ActiveRequest] = {}
         self._change_event = asyncio.Event()
         self._pool_change_event = asyncio.Event()
-        self._recent_usage: dict[str, dict[str, int]] = {}
-        self._recent_order: deque[str] = deque()
 
     def _notify(self) -> None:
         """Signal that the active requests list has changed."""
@@ -125,7 +113,6 @@ class DashboardState:
         req = self._active.get(request_id)
         if req is None:
             return
-        req.chunks_received += 1
         req.buffered_text += text
         msg = {"type": "chunk", "text": text}
         for q in req._subscribers:
@@ -134,27 +121,16 @@ class DashboardState:
             except asyncio.QueueFull:
                 pass  # Drop for slow consumers
 
-    def request_completed(self, request_id: str, usage: dict | None = None) -> None:
+    def request_completed(self, request_id: str) -> None:
         req = self._active.pop(request_id, None)
         if req is None:
             return
-        if usage:
-            self._recent_usage[request_id] = usage
-            self._recent_order.append(request_id)
-            # Evict old entries
-            while len(self._recent_order) > self._RECENT_LIMIT:
-                old_id = self._recent_order.popleft()
-                self._recent_usage.pop(old_id, None)
         for q in req._subscribers:
             try:
                 q.put_nowait({"type": "done"})
             except asyncio.QueueFull:
                 pass  # Drop for slow consumers
         self._notify()
-
-    def get_usage(self, request_id: str) -> dict[str, int] | None:
-        """Return cached usage for a recently completed request."""
-        return self._recent_usage.get(request_id)
 
     def request_errored(self, request_id: str, error: str) -> None:
         req = self._active.pop(request_id, None)
@@ -206,6 +182,12 @@ def _sse_data_lines(text: str) -> str:
     if "\n" in text:
         return "\n".join(f"data: {line}" for line in text.splitlines())
     return f"data: {text}"
+
+
+def _validate_request_id(request_id: str) -> None:
+    """Reject malformed request IDs before constructing filesystem paths."""
+    if _REQUEST_ID_PATTERN.fullmatch(request_id) is None:
+        raise HTTPException(status_code=400, detail="Invalid request ID")
 
 
 TEMPLATES_DIR = Path(__file__).parent / "templates" / "dashboard"
@@ -273,16 +255,26 @@ def create_dashboard_router(
     router = APIRouter()
 
     @router.get("/dashboard", response_class=HTMLResponse)
-    async def dashboard_page():
+    async def dashboard_page(request: Request):
         """Serve the main dashboard page."""
-        page_path = TEMPLATES_DIR / "page.html"
-        return HTMLResponse(content=page_path.read_text())
+        return templates.TemplateResponse(
+            request,
+            "page.html",
+            {"active_view": "monitor"},
+        )
 
     @router.get("/dashboard/chat", response_class=HTMLResponse)
-    async def dashboard_chat_page():
+    async def dashboard_chat_page(request: Request):
         """Serve the chat completion test console."""
-        page_path = TEMPLATES_DIR / "chat.html"
-        return HTMLResponse(content=page_path.read_text())
+        return templates.TemplateResponse(
+            request,
+            "chat.html",
+            {
+                "available_models": AVAILABLE_MODELS,
+                "default_model": "claudecode/sonnet",
+                "active_view": "chat",
+            },
+        )
 
     @router.get("/dashboard/pool", response_class=HTMLResponse)
     async def dashboard_pool(request: Request):
@@ -313,8 +305,7 @@ def create_dashboard_router(
                         available=status.get("available", 0),
                         in_use=status.get("in_use", 0),
                     )
-                    lines = rendered.splitlines()
-                    sse_data = "\n".join(f"data: {line}" for line in lines)
+                    sse_data = _sse_data_lines(rendered)
                     yield f"event: message\n{sse_data}\n\n"
                     await state.wait_for_pool_change(timeout=5.0)
             except asyncio.CancelledError:
@@ -337,7 +328,6 @@ def create_dashboard_router(
         active = state.get_active_requests()
         for req in active:
             req["is_active"] = True
-            req["api_key"] = _mask_api_key(req.get("api_key"))
         active.sort(key=lambda r: r["elapsed_s"])  # lowest elapsed = newest
 
         completed = _get_recent_logs(limit=limit)
@@ -347,17 +337,11 @@ def create_dashboard_router(
             timing = log.get("timing") if isinstance(log.get("timing"), dict) else {}
             if log.get("duration_ms") is None:
                 log["duration_ms"] = timing.get("duration_ms", 0)
-            # Supplement with cached usage if log file didn't have it
             if log.get("input_tokens") is None:
                 usage_data = log.get("usage")
                 if usage_data:
                     log["input_tokens"] = usage_data.get("input_tokens")
                     log["output_tokens"] = usage_data.get("output_tokens")
-                else:
-                    usage = state.get_usage(log.get("request_id", ""))
-                    if usage:
-                        log["input_tokens"] = usage.get("prompt_tokens")
-                        log["output_tokens"] = usage.get("completion_tokens")
 
         merged = active + completed
         return merged[:limit]
@@ -375,9 +359,7 @@ def create_dashboard_router(
                     rendered = templates.get_template("requests.html").render(
                         requests=merged
                     )
-                    # SSE multi-line: each line must be prefixed with "data: "
-                    lines = rendered.splitlines()
-                    sse_data = "\n".join(f"data: {line}" for line in lines)
+                    sse_data = _sse_data_lines(rendered)
                     yield f"event: message\n{sse_data}\n\n"
                     await state.wait_for_change(timeout=2.0)
             except asyncio.CancelledError:
@@ -394,9 +376,7 @@ def create_dashboard_router(
     @router.get("/dashboard/request/{request_id}", response_class=HTMLResponse)
     async def dashboard_request_detail(request_id: str, request: Request):
         """Render request detail — checks active state first, then log file."""
-        # Validate request_id format to prevent path traversal
-        if not re.fullmatch(r"chatcmpl-[a-f0-9]{8,32}", request_id):
-            raise HTTPException(status_code=400, detail="Invalid request ID")
+        _validate_request_id(request_id)
 
         # Check active requests first
         active_requests = state.get_active_requests()
@@ -463,8 +443,7 @@ def create_dashboard_router(
     @router.get("/dashboard/log/{request_id}")
     async def dashboard_log(request_id: str):
         """Serve the raw JSON log for a completed request."""
-        if not re.fullmatch(r"chatcmpl-[a-f0-9]{8,32}", request_id):
-            raise HTTPException(status_code=400, detail="Invalid request ID")
+        _validate_request_id(request_id)
 
         log_dir = session_log_dir()
         log_path = log_dir / f"{request_id}.json"
@@ -478,9 +457,7 @@ def create_dashboard_router(
     @router.get("/dashboard/attachment/{request_id}/{filename}")
     async def dashboard_attachment(request_id: str, filename: str):
         """Serve a saved attachment file."""
-        # Validate request_id format
-        if not re.fullmatch(r"chatcmpl-[a-f0-9]{8,32}", request_id):
-            raise HTTPException(status_code=400, detail="Invalid request ID")
+        _validate_request_id(request_id)
         # Validate filename — no path traversal
         if ".." in filename or "/" in filename or "\\" in filename:
             raise HTTPException(status_code=400, detail="Invalid filename")
@@ -498,8 +475,7 @@ def create_dashboard_router(
     @router.get("/dashboard/stream/{request_id}")
     async def dashboard_stream(request_id: str):
         """SSE endpoint for live token streaming."""
-        if not re.fullmatch(r"chatcmpl-[a-f0-9]{8,32}", request_id):
-            raise HTTPException(status_code=400, detail="Invalid request ID")
+        _validate_request_id(request_id)
         queue = state.subscribe(request_id)
         if queue is None:
             raise HTTPException(status_code=404, detail="Request not active")
