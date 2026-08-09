@@ -8,12 +8,15 @@ Usage:
 """
 
 import json
+import os
+from importlib.metadata import version
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
+from agentbridge import __version__
 from agentbridge.models import (
     ChatCompletionRequest,
     FunctionDefinition,
@@ -27,8 +30,8 @@ from agentbridge.models import (
 from agentbridge.server import (
     ClaudeResponse,
     _build_codex_command,
-    _openrouter_client_kwargs,
     _message_from_openrouter,
+    _openrouter_client_kwargs,
     _openrouter_payload,
     _openrouter_to_dict,
     _parse_codex_json_lines,
@@ -39,6 +42,7 @@ from agentbridge.server import (
     extract_text_from_content,
     format_messages,
     format_multimodal_messages,
+    main,
     parse_tool_response,
 )
 
@@ -419,6 +423,16 @@ class TestCodexHelpers:
 
         assert _resolve_codex_reasoning_effort(request, resolution) == "high"
 
+    def test_gpt56_sol_defaults_to_high_reasoning_effort(self):
+        """gpt-5.6-sol Codex requests default to high reasoning."""
+        request = ChatCompletionRequest(
+            model="codex/gpt-5.6-sol",
+            messages=[Message(role="user", content="Hello")],
+        )
+        resolution = resolve_model_request(request.model)
+
+        assert _resolve_codex_reasoning_effort(request, resolution) == "high"
+
     def test_request_reasoning_effort_overrides_gpt55_default(self):
         """Explicit reasoning_effort wins over the gpt-5.5 default."""
         request = ChatCompletionRequest(
@@ -620,7 +634,40 @@ class TestHealthEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "ok"
-        assert "version" in data
+        assert data["version"] == __version__ == version("agentbridge-py")
+
+
+@pytest.mark.unit
+class TestCliConfiguration:
+    """Tests for CLI ownership of runtime configuration."""
+
+    def test_pool_size_environment_sets_worker_default(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("AGENTBRIDGE_CONFIG_DIR", str(tmp_path))
+        monkeypatch.setenv("POOL_SIZE", "4")
+        monkeypatch.setattr("sys.argv", ["agentbridge"])
+
+        with (
+            patch("agentbridge.server._configure_logging"),
+            patch("agentbridge.server._print_banner"),
+            patch("uvicorn.run"),
+        ):
+            main()
+
+        assert os.environ["POOL_SIZE"] == "4"
+
+    def test_workers_flag_overrides_pool_size_environment(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("AGENTBRIDGE_CONFIG_DIR", str(tmp_path))
+        monkeypatch.setenv("POOL_SIZE", "4")
+        monkeypatch.setattr("sys.argv", ["agentbridge", "--workers", "2"])
+
+        with (
+            patch("agentbridge.server._configure_logging"),
+            patch("agentbridge.server._print_banner"),
+            patch("uvicorn.run"),
+        ):
+            main()
+
+        assert os.environ["POOL_SIZE"] == "2"
 
 
 @pytest.mark.unit
@@ -640,6 +687,7 @@ class TestModelsEndpoint:
         response = test_client.get("/api/v1/models")
         data = response.json()
         ids = {model["id"] for model in data["data"]}
+        assert "codex/gpt-5.6-sol" in ids
         assert "codex/gpt-5.5" in ids
         assert "codex" not in ids
         assert any(model_id.startswith("claudecode/") for model_id in ids)

@@ -1,135 +1,26 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>agentbridge monitor</title>
+{% extends "base.html" %}
+
+{% block title %}agentbridge monitor{% endblock %}
+
+{% block head_scripts %}
     <script src="https://unpkg.com/htmx.org@2.0.4"></script>
     <script src="https://unpkg.com/htmx-ext-sse@2.2.4/sse.js"></script>
-    <style>
+{% endblock %}
+
+{% block page_styles %}
         :root {
-            --bg: #f7f8f8;
-            --surface: #ffffff;
-            --surface-muted: #f1f3f3;
-            --text: #1f2424;
-            --muted: #667070;
             --dim: #929b9b;
-            --border: #dfe4e4;
-            --accent: #168575;
-            --accent-strong: #0f6f62;
             --accent-soft: rgba(22, 133, 117, 0.08);
-            --danger: #b42318;
             --danger-soft: #fff1f0;
-            --danger-border: #f5c6c1;
-            --warn: #a15c07;
             --warn-soft: #fff7ed;
-            --ok: #1b806a;
             --blue: #286bd1;
             --shadow: 0 14px 40px rgba(18, 27, 27, 0.06);
-            --font: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-            --mono: "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
-            --header-height: 64px;
             --sidebar-width: 360px;
-        }
-
-        *, *::before, *::after { box-sizing: border-box; }
-
-        html, body {
-            margin: 0;
-            padding: 0;
-            height: 100vh;
-            overflow: hidden;
-            background: var(--bg);
-            color: var(--text);
-            font-family: var(--font);
-            font-size: 14px;
-            letter-spacing: 0;
-        }
-
-        button, input {
-            font: inherit;
+            --topbar-bg: rgba(255, 255, 255, 0.94);
         }
 
         .app {
-            display: grid;
             grid-template-rows: var(--header-height) 1fr 32px;
-            height: 100vh;
-        }
-
-        header {
-            min-height: var(--header-height);
-            background: rgba(255, 255, 255, 0.94);
-            border-bottom: 1px solid var(--border);
-            display: grid;
-            grid-template-columns: auto 1fr auto;
-            align-items: center;
-            gap: 18px;
-            padding: 0 20px;
-        }
-
-        header h1 {
-            margin: 0;
-            font-size: 21px;
-            font-weight: 750;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            color: var(--text);
-            letter-spacing: 0;
-        }
-
-        header svg {
-            flex: none;
-        }
-
-        .main-nav {
-            justify-self: start;
-            height: 42px;
-            display: inline-flex;
-            align-items: stretch;
-            border: 1px solid var(--border);
-            border-radius: 7px;
-            background: var(--surface);
-            overflow: hidden;
-            box-shadow: 0 1px 0 rgba(18, 27, 27, 0.03);
-        }
-
-        .nav-item {
-            appearance: none;
-            min-width: 112px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            padding: 0 18px;
-            color: var(--muted);
-            background: transparent;
-            text-decoration: none;
-            border: 0;
-            border-bottom: 3px solid transparent;
-            font-weight: 550;
-            cursor: pointer;
-        }
-
-        .nav-item.active {
-            color: var(--accent-strong);
-            border-bottom-color: var(--accent);
-            background: #fbfefe;
-        }
-
-        .nav-item:focus-visible {
-            outline: 2px solid rgba(22, 133, 117, 0.35);
-            outline-offset: -2px;
-        }
-
-        .nav-item:hover {
-            color: var(--text);
-            background: var(--surface-muted);
-        }
-
-        .header-actions {
-            display: flex;
-            align-items: center;
-            gap: 12px;
         }
 
         .refresh-button,
@@ -863,38 +754,22 @@
                 flex: 1;
             }
         }
-    </style>
-</head>
-<body>
-    <div class="app">
-        <header>
-            <h1>
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 24" width="28" height="21" fill="none" stroke="#f04438" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <line x1="2" y1="16" x2="30" y2="16" />
-                    <path d="M4 16 Q16 4 28 16" />
-                    <line x1="10" y1="16" x2="10" y2="11.2" stroke-opacity="0.55" stroke-width="1.5" />
-                    <line x1="16" y1="16" x2="16" y2="7" stroke-opacity="0.55" stroke-width="1.5" />
-                    <line x1="22" y1="16" x2="22" y2="11.2" stroke-opacity="0.55" stroke-width="1.5" />
-                </svg>
-                AgentBridge
-            </h1>
-            <nav class="main-nav" aria-label="Dashboard views">
-                <a class="nav-item active" href="/dashboard">Monitor</a>
-                <a class="nav-item" href="/dashboard/chat">Chat</a>
-            </nav>
-            <div class="header-actions">
-                <div hx-ext="sse" sse-connect="/dashboard/pool/stream" sse-swap="message" hx-swap="innerHTML"></div>
-                <button class="refresh-button" type="button" onclick="location.reload()">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                        <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path>
-                        <path d="M3 21v-5h5"></path>
-                        <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path>
-                        <path d="M16 8h5V3"></path>
-                    </svg>
-                    Refresh
-                </button>
-            </div>
-        </header>
+{% endblock %}
+
+{% block header_actions %}
+    <div hx-ext="sse" sse-connect="/dashboard/pool/stream" sse-swap="message" hx-swap="innerHTML"></div>
+    <button class="refresh-button" type="button" onclick="location.reload()">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path>
+            <path d="M3 21v-5h5"></path>
+            <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path>
+            <path d="M16 8h5V3"></path>
+        </svg>
+        Refresh
+    </button>
+{% endblock %}
+
+{% block content %}
         <div class="dashboard">
             <aside class="sidebar">
                 <div class="filter-wrap">
@@ -925,7 +800,9 @@
             <span class="status-dot"></span>
             Live updates via SSE
         </footer>
-    </div>
+{% endblock %}
+
+{% block scripts %}
     <script>
         (function() {
             var initialSelectedId = new URLSearchParams(window.location.search).get('request_id');
@@ -1087,5 +964,4 @@
             });
         })();
     </script>
-</body>
-</html>
+{% endblock %}

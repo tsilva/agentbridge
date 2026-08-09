@@ -6,15 +6,13 @@ import os
 from pathlib import Path
 
 CONFIG_DIR_ENV = "AGENTBRIDGE_CONFIG_DIR"
+DEFAULT_POOL_SIZE = 1
 DEFAULT_ENV_CONTENT = """# AgentBridge local configuration
 # Keep API keys on this machine only. Values in the process environment override this file.
 OPENROUTER_API_KEY=
 OPENROUTER_SITE_URL=
 OPENROUTER_APP_NAME=agentbridge
 """
-
-_loaded_env_path: Path | None = None
-
 
 def user_config_dir(*, create: bool = False) -> Path:
     """Return the user config directory, defaulting to ~/.config/agentbridge."""
@@ -47,8 +45,6 @@ def _unquote_env_value(value: str) -> str:
 
 def load_user_env(*, create: bool = False) -> Path | None:
     """Load ~/.config/agentbridge/.env into os.environ without overriding existing values."""
-    global _loaded_env_path
-
     path = user_env_path(create_parent=create)
     if create and not path.exists():
         _write_default_env(path)
@@ -67,7 +63,6 @@ def load_user_env(*, create: bool = False) -> Path | None:
         if parsed_value:
             os.environ.setdefault(key, parsed_value)
 
-    _loaded_env_path = path
     return path
 
 

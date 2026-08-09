@@ -9,6 +9,8 @@ import time
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, AsyncIterator, Callable
 
+from .config import DEFAULT_POOL_SIZE
+
 if TYPE_CHECKING:
     from claude_agent_sdk import ClaudeSDKClient
 
@@ -23,11 +25,11 @@ _RESET = "\033[0m"
 HEALTH_CHECK_INTERVAL = 60
 
 
-def make_options(model: str, max_tokens: int | None = None):
+def make_options(model: str):
     """Create ClaudeAgentOptions with model."""
     from claude_agent_sdk import ClaudeAgentOptions
 
-    opts = ClaudeAgentOptions(
+    return ClaudeAgentOptions(
         max_turns=1,
         setting_sources=None,  # Don't load user filesystem settings
         system_prompt={"type": "preset", "preset": "claude_code"},
@@ -35,9 +37,6 @@ def make_options(model: str, max_tokens: int | None = None):
         env={"CLAUDE_CODE_BRIDGE": "1"},
         tools=[],  # No built-in tools - pure chat mode
     )
-    if max_tokens is not None:
-        opts.max_tokens = max_tokens
-    return opts
 
 
 class ClientPool:
@@ -50,19 +49,16 @@ class ClientPool:
 
     def __init__(
         self,
-        size: int = 3,
-        default_model: str = "opus",
+        size: int = DEFAULT_POOL_SIZE,
         on_change: Callable[[], None] | None = None,
     ):
         """Initialize client pool.
 
         Args:
             size: Maximum concurrent clients / idle slots.
-            default_model: Fallback model for diagnostics.
             on_change: Optional callback invoked on every state mutation.
         """
         self.size = size
-        self.default_model = default_model
         self._on_change = on_change
         self._client_models: dict[ClaudeSDKClient, str] = {}  # client -> model
         self._available: list[ClaudeSDKClient] = []  # idle reusable clients
@@ -292,7 +288,7 @@ class ClientPool:
                     if process is not None and process.returncode is not None:
                         raise RuntimeError("Process exited")
             except Exception:
-                model = self._client_models.get(client, self.default_model)
+                model = self._client_models.get(client, "unknown")
                 logger.warning(f"[pool] Health check: {model} client unresponsive")
                 removed = False
                 async with self._lock:
