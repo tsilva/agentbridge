@@ -2,11 +2,7 @@
 
 import os
 
-import pytest
-
 from agentbridge import config
-
-pytestmark = pytest.mark.unit
 
 
 def test_ensure_user_config_creates_env_and_default_log_dir(tmp_path, monkeypatch):

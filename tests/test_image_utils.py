@@ -26,7 +26,6 @@ from agentbridge.server import (
 )
 
 
-@pytest.mark.unit
 class TestParseDataUrl:
     """Tests for parse_data_url function."""
 
@@ -100,7 +99,6 @@ class TestParseDataUrl:
             parse_data_url(url)
 
 
-@pytest.mark.unit
 class TestIsHttpUrl:
     """Tests for is_http_url function."""
 
@@ -133,7 +131,6 @@ class TestIsHttpUrl:
         assert is_http_url("") is False
 
 
-@pytest.mark.unit
 class TestIsDataUrl:
     """Tests for is_data_url function."""
 
@@ -162,7 +159,6 @@ class TestIsDataUrl:
         assert is_data_url("data:") is True
 
 
-@pytest.mark.unit
 class TestOpenaiImageToClaude:
     """Tests for openai_image_to_claude function."""
 
@@ -208,6 +204,16 @@ class TestOpenaiImageToClaude:
         assert result["type"] == "image"
         assert result["source"]["media_type"] == "image/webp"
 
+    def test_base64_svg_to_image_block(self):
+        """Base64 SVG converts to an image block."""
+        content = ImageUrlContent(
+            type="image_url",
+            image_url=ImageUrl(url="data:image/svg+xml;base64,PHN2Zw=="),
+        )
+        result = openai_image_to_claude(content)
+        assert result["type"] == "image"
+        assert result["source"]["media_type"] == "image/svg+xml"
+
     def test_base64_pdf_to_document_block(self):
         """Base64 PDF converts to document block (not image)."""
         content = ImageUrlContent(
@@ -218,6 +224,7 @@ class TestOpenaiImageToClaude:
         assert result["type"] == "document"
         assert result["source"]["type"] == "base64"
         assert result["source"]["media_type"] == "application/pdf"
+        assert result["source"]["data"] == "JVBERi0xLjQ="
 
     def test_http_url_to_url_source(self):
         """HTTP URL converts to url source."""
@@ -251,7 +258,6 @@ class TestOpenaiImageToClaude:
         assert "Unsupported image URL format" in str(exc_info.value)
 
 
-@pytest.mark.unit
 class TestOpenaiContentToClaude:
     """Tests for openai_content_to_claude function."""
 
@@ -332,7 +338,6 @@ class TestOpenaiContentToClaude:
         assert result[2]["type"] == "image"  # Image
 
 
-@pytest.mark.unit
 class TestHasMultimodalContent:
     """Tests for has_multimodal_content function."""
 
@@ -403,7 +408,6 @@ class TestHasMultimodalContent:
         assert has_multimodal_content(messages) is False
 
 
-@pytest.mark.unit
 class TestExtractTextFromContent:
     """Tests for extract_text_from_content function."""
 
@@ -465,35 +469,3 @@ class TestExtractTextFromContent:
     def test_empty_content(self):
         """Empty content returns empty string."""
         assert extract_text_from_content([]) == ""
-
-
-@pytest.mark.unit
-class TestImageBlockTypeRegression:
-    """Regression tests ensuring images produce correct block types."""
-
-    @pytest.mark.parametrize("media_type,url_prefix", [
-        ("image/png", "data:image/png;base64,iVBORw0KGgo="),
-        ("image/jpeg", "data:image/jpeg;base64,/9j/4AAQ"),
-        ("image/gif", "data:image/gif;base64,R0lGODlh"),
-        ("image/webp", "data:image/webp;base64,UklGR"),
-        ("image/svg+xml", "data:image/svg+xml;base64,PHN2Zw=="),
-    ])
-    def test_images_produce_image_blocks(self, media_type, url_prefix):
-        """All image types produce 'image' blocks, not 'document'."""
-        content = ImageUrlContent(
-            type="image_url",
-            image_url=ImageUrl(url=url_prefix),
-        )
-        result = openai_image_to_claude(content)
-        assert result["type"] == "image", f"{media_type} should produce 'image' block"
-        assert result["source"]["media_type"] == media_type
-
-    def test_pdf_produces_document_block(self):
-        """PDFs produce 'document' blocks, not 'image'."""
-        content = ImageUrlContent(
-            type="image_url",
-            image_url=ImageUrl(url="data:application/pdf;base64,JVBERi0="),
-        )
-        result = openai_image_to_claude(content)
-        assert result["type"] == "document", "PDF should produce 'document' block"
-        assert result["source"]["media_type"] == "application/pdf"

@@ -9,8 +9,6 @@ Usage:
 
 import json
 
-import pytest
-
 from agentbridge.models import (
     ChatCompletionChunk,
     # Request models
@@ -40,7 +38,6 @@ from agentbridge.models import (
 )
 
 
-@pytest.mark.unit
 class TestMessageModel:
     """Tests for Message model validation."""
 
@@ -101,7 +98,6 @@ class TestMessageModel:
         assert data["tool_calls"] is None
 
 
-@pytest.mark.unit
 class TestImageUrlModel:
     """Tests for ImageUrl model."""
 
@@ -132,7 +128,6 @@ class TestImageUrlModel:
         assert img.detail == "high"
 
 
-@pytest.mark.unit
 class TestChatCompletionRequest:
     """Tests for ChatCompletionRequest model."""
 
@@ -266,7 +261,6 @@ class TestChatCompletionRequest:
         assert req.stream_options == {"include_usage": True}
 
 
-@pytest.mark.unit
 class TestChatCompletionResponse:
     """Tests for ChatCompletionResponse model."""
 
@@ -376,7 +370,6 @@ class TestChatCompletionResponse:
         assert resp.system_fingerprint is None
 
 
-@pytest.mark.unit
 class TestChatCompletionChunk:
     """Tests for streaming chunk model."""
 
@@ -445,7 +438,6 @@ class TestChatCompletionChunk:
         assert chunk.system_fingerprint == "fp_abc"
 
 
-@pytest.mark.unit
 class TestErrorModels:
     """Tests for error response models."""
 
@@ -497,7 +489,6 @@ class TestErrorModels:
         assert data["error"]["param"] == "model"
 
 
-@pytest.mark.unit
 class TestToolModels:
     """Tests for tool-related models."""
 
@@ -552,7 +543,6 @@ class TestToolModels:
         assert args["city"] == "New York"
 
 
-@pytest.mark.unit
 class TestModelInfo:
     """Tests for model listing models."""
 
@@ -576,7 +566,6 @@ class TestModelInfo:
         assert len(models.data) == 2
 
 
-@pytest.mark.unit
 class TestUsageModel:
     """Tests for Usage model."""
 

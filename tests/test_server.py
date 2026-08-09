@@ -39,6 +39,7 @@ from agentbridge.server import (
     _usage_from_openrouter,
     app,
     build_tool_prompt,
+    dashboard_state,
     extract_text_from_content,
     format_messages,
     format_multimodal_messages,
@@ -47,7 +48,6 @@ from agentbridge.server import (
 )
 
 
-@pytest.mark.unit
 class TestFormatMessages:
     """Tests for format_messages function."""
 
@@ -101,7 +101,6 @@ class TestFormatMessages:
         assert "User: Continue" in result
 
 
-@pytest.mark.unit
 class TestExtractTextContent:
     """Tests for extract_text_from_content used by server formatting functions."""
 
@@ -139,7 +138,6 @@ class TestExtractTextContent:
         assert result == ""
 
 
-@pytest.mark.unit
 class TestBuildToolPrompt:
     """Tests for build_tool_prompt function."""
 
@@ -198,7 +196,6 @@ class TestBuildToolPrompt:
         assert "numbers" in result
 
 
-@pytest.mark.unit
 class TestParseToolResponse:
     """Tests for parse_tool_response function."""
 
@@ -273,7 +270,6 @@ class TestParseToolResponse:
         assert tool_calls[0].id.startswith("call_")
 
 
-@pytest.mark.unit
 class TestClaudeResponse:
     """Tests for ClaudeResponse container class."""
 
@@ -334,7 +330,6 @@ class TestClaudeResponse:
         assert usage["total_tokens"] == 50
 
 
-@pytest.mark.unit
 class TestCodexHelpers:
     """Tests for Codex CLI helper functions."""
 
@@ -445,7 +440,6 @@ class TestCodexHelpers:
         assert _resolve_codex_reasoning_effort(request, resolution) == "medium"
 
 
-@pytest.mark.unit
 class TestOpenRouterHelpers:
     """Tests for OpenRouter adapter helper functions."""
 
@@ -540,7 +534,6 @@ class TestOpenRouterHelpers:
         }
 
 
-@pytest.mark.unit
 class TestFormatMultimodalMessages:
     """Tests for format_multimodal_messages function."""
 
@@ -624,7 +617,6 @@ def test_client():
         yield TestClient(app, raise_server_exceptions=False)
 
 
-@pytest.mark.unit
 class TestHealthEndpoint:
     """Tests for /health endpoint."""
 
@@ -637,7 +629,6 @@ class TestHealthEndpoint:
         assert data["version"] == __version__ == version("agentbridge-py")
 
 
-@pytest.mark.unit
 class TestCliConfiguration:
     """Tests for CLI ownership of runtime configuration."""
 
@@ -670,7 +661,6 @@ class TestCliConfiguration:
         assert os.environ["POOL_SIZE"] == "2"
 
 
-@pytest.mark.unit
 class TestModelsEndpoint:
     """Tests for /api/v1/models endpoint."""
 
@@ -697,7 +687,6 @@ class TestModelsEndpoint:
             assert model["object"] == "model"
 
 
-@pytest.mark.unit
 class TestChatCompletionsValidation:
     """Tests for /api/v1/chat/completions request validation."""
 
@@ -762,7 +751,86 @@ class TestChatCompletionsValidation:
         assert response.status_code != 422
 
 
-@pytest.mark.unit
+class TestNonStreamingDashboardLifecycle:
+    """The endpoint owns dashboard state for non-streaming providers."""
+
+    def test_success_completes_once(self, test_client):
+        provider_response = ClaudeResponse()
+        provider_response.text = "Hello"
+
+        with (
+            patch(
+                "agentbridge.server.call_claude_sdk",
+                new=AsyncMock(return_value=provider_response),
+            ),
+            patch.object(
+                dashboard_state,
+                "request_started",
+                wraps=dashboard_state.request_started,
+            ) as started,
+            patch.object(
+                dashboard_state,
+                "request_completed",
+                wraps=dashboard_state.request_completed,
+            ) as completed,
+            patch.object(
+                dashboard_state,
+                "request_errored",
+                wraps=dashboard_state.request_errored,
+            ) as errored,
+            patch("agentbridge.server.SessionLogger.write"),
+        ):
+            response = test_client.post(
+                "/api/v1/chat/completions",
+                headers={"Authorization": "Bearer should-not-be-recorded"},
+                json={
+                    "model": "claudecode/sonnet",
+                    "messages": [{"role": "user", "content": "Hi"}],
+                },
+            )
+
+        assert response.status_code == 200
+        started.assert_called_once()
+        completed.assert_called_once_with(started.call_args.args[0])
+        errored.assert_not_called()
+        assert "api_key" not in started.call_args.kwargs
+
+    def test_failure_errors_once(self, test_client):
+        with (
+            patch(
+                "agentbridge.server.call_claude_sdk",
+                new=AsyncMock(side_effect=RuntimeError("provider failed")),
+            ),
+            patch.object(
+                dashboard_state,
+                "request_started",
+                wraps=dashboard_state.request_started,
+            ) as started,
+            patch.object(
+                dashboard_state,
+                "request_completed",
+                wraps=dashboard_state.request_completed,
+            ) as completed,
+            patch.object(
+                dashboard_state,
+                "request_errored",
+                wraps=dashboard_state.request_errored,
+            ) as errored,
+            patch("agentbridge.server.SessionLogger.write"),
+        ):
+            response = test_client.post(
+                "/api/v1/chat/completions",
+                json={
+                    "model": "claudecode/sonnet",
+                    "messages": [{"role": "user", "content": "Hi"}],
+                },
+            )
+
+        assert response.status_code == 500
+        completed.assert_not_called()
+        errored.assert_called_once_with(started.call_args.args[0], "provider failed")
+
+
 class TestErrorResponseFormat:
     """Tests for error response formatting."""
 

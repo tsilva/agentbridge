@@ -291,10 +291,9 @@ MAX_LOG_FILES = int(os.environ.get("MAX_LOG_FILES", 1000))
 class SessionLogger:
     """Logs a single Claude request/response session to a JSON file."""
 
-    def __init__(self, request_id: str, model: str, api_key: str | None = None):
+    def __init__(self, request_id: str, model: str):
         self.request_id = request_id
         self.model = model
-        self.api_key = api_key
         self.start_time = datetime.now(timezone.utc)
         self.chunks: list[str] = []
         self.finish_reason: str | None = None
@@ -378,11 +377,7 @@ class SessionLogger:
         data = {
             "request_id": self.request_id,
             "model": self.model,
-            "api_key": (
-                (self.api_key[:4] + "***")
-                if self.api_key and len(self.api_key) > 4
-                else ("***" if self.api_key else None)
-            ),
+            "api_key": None,
             "timestamp": self.start_time.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
             "messages": msg_list,
             "parameters": {
@@ -1131,18 +1126,11 @@ async def call_codex_cli(
     model: str,
     session_logger: SessionLogger,
     tools: list[Tool] | None = None,
-    messages: list[dict] | None = None,
     reasoning_effort: ReasoningEffort | None = None,
 ) -> ClaudeResponse:
     """Call Codex CLI and return an OpenAI-compatible response container."""
     resolution = resolve_model_request(model)
     request_id = session_logger.request_id
-    dashboard_state.request_started(
-        request_id,
-        model,
-        api_key=session_logger.api_key,
-        messages=messages,
-    )
     effective_prompt = apply_tool_prompt(prompt, tools) if tools else prompt
     response = ClaudeResponse()
     semaphore = _get_codex_semaphore()
@@ -1213,14 +1201,12 @@ async def call_codex_cli(
             f"tokens={usage_dict['prompt_tokens']}in/{usage_dict['completion_tokens']}out"
         )
         session_logger.log_finish(response.finish_reason)
-        dashboard_state.request_completed(request_id)
         return response
     except asyncio.TimeoutError:
         session_logger.log_error(
             f"Timeout after {CODEX_TIMEOUT}s",
             exception_type="TimeoutError",
         )
-        dashboard_state.request_errored(request_id, f"Timeout after {CODEX_TIMEOUT}s")
         raise BridgeHTTPException(
             status_code=504,
             detail=(
@@ -1239,7 +1225,6 @@ async def call_codex_cli(
             exception_type=type(e).__name__,
             traceback_str=tb,
         )
-        dashboard_state.request_errored(request_id, f"{type(e).__name__}: {e}")
         raise
     finally:
         if acquired:
@@ -1378,16 +1363,9 @@ async def call_openrouter_api(
     request: ChatCompletionRequest,
     backend_model: str,
     session_logger: SessionLogger,
-    messages: list[dict] | None = None,
 ) -> ClaudeResponse:
     """Call OpenRouter's Chat Completions API and return a local response container."""
     request_id = session_logger.request_id
-    dashboard_state.request_started(
-        request_id,
-        request.model,
-        api_key=session_logger.api_key,
-        messages=messages,
-    )
     response = ClaudeResponse()
     query_start = time.monotonic()
 
@@ -1420,7 +1398,6 @@ async def call_openrouter_api(
 
         logging.info(f"[{request_id}] Completed openrouter | query={query_ms}ms")
         session_logger.log_finish(response.finish_reason)
-        dashboard_state.request_completed(request_id)
         return response
     except Exception as e:
         error = (
@@ -1435,7 +1412,6 @@ async def call_openrouter_api(
             exception_type=type(e).__name__,
             traceback_str=tb,
         )
-        dashboard_state.request_errored(request_id, f"{type(e).__name__}: {error}")
         raise RuntimeError(error) from e
 
 
@@ -1474,7 +1450,6 @@ async def stream_openrouter_api(
     dashboard_state.request_started(
         request_id,
         request.model,
-        api_key=session_logger.api_key,
         messages=messages,
     )
     created = int(time.time())
@@ -1563,7 +1538,6 @@ async def call_claude_sdk(
     model: str,
     session_logger: SessionLogger,
     tools: list[Tool] | None = None,
-    messages: list[dict] | None = None,
 ) -> ClaudeResponse:
     """Call Claude Code SDK using pooled client and return response.
 
@@ -1587,12 +1561,6 @@ async def call_claude_sdk(
 
     resolved_model = resolve_model(model)
     request_id = session_logger.request_id
-    dashboard_state.request_started(
-        request_id,
-        model,
-        api_key=session_logger.api_key,
-        messages=messages,
-    )
 
     # Add tool prompt if tools are provided
     effective_prompt = apply_tool_prompt(prompt, tools) if tools else prompt
@@ -1650,7 +1618,6 @@ async def call_claude_sdk(
             f"tokens={usage['prompt_tokens']}in/{usage['completion_tokens']}out"
         )
         session_logger.log_finish(response.finish_reason)
-        dashboard_state.request_completed(request_id)
     except asyncio.TimeoutError:
         snap = pool.snapshot() if pool is not None else {}
         logging.error(f"[{request_id}] Timeout after {CLAUDE_TIMEOUT}s | pool={snap}")
@@ -1669,7 +1636,6 @@ async def call_claude_sdk(
             exception_type="TimeoutError",
             pool_snapshot=snap,
         )
-        dashboard_state.request_errored(request_id, f"Timeout after {CLAUDE_TIMEOUT}s")
         raise BridgeHTTPException(
             status_code=504,
             detail=(
@@ -1690,12 +1656,10 @@ async def call_claude_sdk(
             traceback_str=tb,
             pool_snapshot=snap,
         )
-        dashboard_state.request_errored(request_id, f"{type(e).__name__}: {e}")
         raise
     except BaseException:
         # Handles asyncio.CancelledError and other non-Exception BaseExceptions
         session_logger.log_error("Request cancelled", exception_type="CancelledError")
-        dashboard_state.request_errored(request_id, "Request cancelled")
         raise
 
     return response
@@ -1731,7 +1695,6 @@ async def stream_claude_sdk(
     dashboard_state.request_started(
         request_id,
         model,
-        api_key=session_logger.api_key,
         messages=messages,
     )
     created = int(time.time())
@@ -1958,7 +1921,6 @@ async def stream_codex_cli(
     dashboard_state.request_started(
         request_id,
         model,
-        api_key=session_logger.api_key,
         messages=messages,
     )
     created = int(time.time())
@@ -2205,7 +2167,7 @@ async def stream_codex_cli(
 
 
 @app.post("/api/v1/chat/completions")
-async def chat_completions(request: ChatCompletionRequest, http_request: Request):
+async def chat_completions(request: ChatCompletionRequest):
     """OpenAI-compatible chat completions endpoint.
 
     Note: Concurrency is managed by the client pool (POOL_SIZE env var).
@@ -2225,10 +2187,8 @@ async def chat_completions(request: ChatCompletionRequest, http_request: Request
     _warn_unsupported_params(request, model_resolution.provider)
 
     request_id = f"chatcmpl-{uuid4().hex[:12]}"
-    auth = http_request.headers.get("authorization", "")
-    api_key = (auth.removeprefix("Bearer ").strip() or None) if auth else None
     prompt = format_messages(request.messages)
-    session_logger = SessionLogger(request_id, request.model, api_key=api_key)
+    session_logger = SessionLogger(request_id, request.model)
     # Serialize messages for dashboard display
     dash_messages = [
         {
@@ -2290,6 +2250,11 @@ async def chat_completions(request: ChatCompletionRequest, http_request: Request
             },
         )
 
+    dashboard_state.request_started(
+        request_id,
+        request.model,
+        messages=dash_messages,
+    )
     try:
         if model_resolution.provider == "claudecode":
             response = await call_claude_sdk(
@@ -2297,7 +2262,6 @@ async def chat_completions(request: ChatCompletionRequest, http_request: Request
                 request.model,
                 session_logger,
                 request.tools,
-                messages=dash_messages,
             )
         elif model_resolution.provider == "codex":
             response = await call_codex_cli(
@@ -2305,7 +2269,6 @@ async def chat_completions(request: ChatCompletionRequest, http_request: Request
                 request.model,
                 session_logger,
                 request.tools,
-                messages=dash_messages,
                 reasoning_effort=codex_reasoning_effort,
             )
         else:
@@ -2313,8 +2276,15 @@ async def chat_completions(request: ChatCompletionRequest, http_request: Request
                 request,
                 model_resolution.model,
                 session_logger,
-                messages=dash_messages,
             )
+    except BaseException as exc:
+        dashboard_error = session_logger.error or str(exc) or "Request failed"
+        if session_logger.exception_type not in {None, "TimeoutError", "CancelledError"}:
+            dashboard_error = f"{session_logger.exception_type}: {dashboard_error}"
+        dashboard_state.request_errored(request_id, dashboard_error)
+        raise
+    else:
+        dashboard_state.request_completed(request_id)
     finally:
         session_logger.write(
             request.messages,

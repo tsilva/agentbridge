@@ -20,7 +20,6 @@ def _make_mock_client():
     return AsyncMock()
 
 
-@pytest.mark.unit
 class TestMakeOptions:
     """Tests for make_options function."""
 
@@ -53,7 +52,6 @@ class TestMakeOptions:
         opts = make_options("opus")
         assert opts.env["CLAUDE_CODE_BRIDGE"] == "1"
 
-@pytest.mark.unit
 class TestClientPoolInit:
     """Tests for ClientPool initialization."""
 
@@ -76,8 +74,6 @@ class TestClientPoolInit:
         assert pool._in_use == 0
 
 
-@pytest.mark.unit
-@pytest.mark.asyncio
 class TestClientPoolInitialize:
     """Tests for pool initialization."""
 
@@ -130,8 +126,6 @@ class TestClientPoolInitialize:
             await pool.shutdown()
 
 
-@pytest.mark.unit
-@pytest.mark.asyncio
 class TestClientPoolAcquire:
     """Tests for pool acquire functionality."""
 
@@ -311,8 +305,6 @@ class TestClientPoolAcquire:
             await pool.shutdown()
 
 
-@pytest.mark.unit
-@pytest.mark.asyncio
 class TestClientPoolReuse:
     """Tests for idle-client reuse logic."""
 
@@ -352,8 +344,6 @@ class TestClientPoolReuse:
             await pool.shutdown()
 
 
-@pytest.mark.unit
-@pytest.mark.asyncio
 class TestClientPoolShutdown:
     """Tests for pool shutdown."""
 
@@ -411,8 +401,6 @@ class TestClientPoolShutdown:
             assert pool._health_check_task is None
 
 
-@pytest.mark.unit
-@pytest.mark.asyncio
 class TestClientPoolModelTracking:
     """Tests for model tracking in pool."""
 
@@ -435,8 +423,6 @@ class TestClientPoolModelTracking:
             await pool.shutdown()
 
 
-@pytest.mark.unit
-@pytest.mark.asyncio
 class TestClientPoolStatus:
     """Tests for pool status method."""
 
@@ -476,8 +462,6 @@ class TestClientPoolStatus:
             await pool.shutdown()
 
 
-@pytest.mark.unit
-@pytest.mark.asyncio
 class TestClientPoolSnapshot:
     """Tests for pool snapshot method."""
 
@@ -503,8 +487,6 @@ class TestClientPoolSnapshot:
             await pool.shutdown()
 
 
-@pytest.mark.unit
-@pytest.mark.asyncio
 class TestCreateClientCleanup:
     """Tests for _create_client cleanup on failure."""
 
@@ -538,8 +520,6 @@ class TestCreateClientCleanup:
             mock_client.disconnect.assert_called_once()
 
 
-@pytest.mark.unit
-@pytest.mark.asyncio
 class TestHealthCheck:
     """Tests for _check_idle_clients health check logic."""
 
@@ -597,8 +577,6 @@ class TestHealthCheck:
         assert no_transport_client in pool._available
 
 
-@pytest.mark.unit
-@pytest.mark.asyncio
 class TestClientPoolRequestIdLogging:
     """Tests for request ID in pool logs."""
 
