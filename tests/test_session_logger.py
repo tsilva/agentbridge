@@ -16,7 +16,6 @@ from agentbridge.models import ImageUrl, ImageUrlContent, Message, TextContent
 from agentbridge.server import SessionLogger
 
 
-@pytest.mark.unit
 class TestSessionLoggerInit:
     """Tests for SessionLogger initialization."""
 
@@ -53,7 +52,6 @@ class TestSessionLoggerInit:
             del os.environ["LOG_DIR"]
 
 
-@pytest.mark.unit
 class TestSessionLoggerOperations:
     """Tests for logging operations."""
 
@@ -90,7 +88,6 @@ class TestSessionLoggerOperations:
         assert logger.error == "Timeout after 120s"
 
 
-@pytest.mark.unit
 class TestSessionLoggerWrite:
     """Tests for writing session logs to JSON file."""
 
@@ -139,6 +136,7 @@ class TestSessionLoggerWrite:
         data = self._read_log(logger)
         assert data["request_id"] == "test-abc"
         assert data["model"] == "opus"
+        assert data["api_key"] is None
         assert data["parameters"]["temperature"] == 0.7
         assert data["parameters"]["max_tokens"] == 100
 
@@ -266,7 +264,6 @@ class TestSessionLoggerWrite:
         assert "T" in data["timestamp"]
 
 
-@pytest.mark.unit
 class TestSessionLoggerCleanup:
     """Tests for log file cleanup."""
 

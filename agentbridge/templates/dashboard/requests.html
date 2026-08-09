@@ -18,7 +18,7 @@
             <span class="badge badge-ok">ok</span>
             {% endif %}
         </div>
-        <div class="request-model">{{ req.model }}{% if req.api_key and req.api_key != "anonymous" %} · {{ req.api_key }}{% endif %}</div>
+        <div class="request-model">{{ req.model }}</div>
     </div>
     <div class="request-metrics">
         <div>{% if req.is_active %}{{ req.elapsed_s }}s{% else %}{{ req.duration_ms }}ms{% endif %}</div>

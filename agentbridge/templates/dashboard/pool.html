@@ -6,15 +6,4 @@
         {% if at_capacity %}Busy{% else %}Healthy{% endif %}
     </span>
     <span class="pool-count">{{ [capacity_available, 0]|max }}/{{ size }} capacity</span>
-    <span class="pool-dots" aria-hidden="true">
-        {% for i in range(size) %}
-            {% if i < in_use %}
-            <span class="pool-dot in-use" title="in use"></span>
-            {% elif i < in_use + available %}
-            <span class="pool-dot available" title="available"></span>
-            {% else %}
-            <span class="pool-dot empty" title="empty"></span>
-            {% endif %}
-        {% endfor %}
-    </span>
 </div>

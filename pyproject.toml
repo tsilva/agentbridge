@@ -50,9 +50,6 @@ path = "hatch_build.py"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-markers = [
-    "unit: mark test as unit test (no server required)",
-]
 
 [tool.ruff]
 line-length = 100

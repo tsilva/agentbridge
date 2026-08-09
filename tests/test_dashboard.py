@@ -2,7 +2,7 @@
 Unit tests for dashboard state tracking and routes.
 
 Usage:
-- pytest tests/test_dashboard.py -v -m unit
+- pytest tests/test_dashboard.py -v
 """
 
 import asyncio
@@ -25,7 +25,6 @@ from agentbridge.dashboard import (
 # State tests
 # ---------------------------------------------------------------------------
 
-@pytest.mark.unit
 class TestActiveRequest:
     """Tests for _ActiveRequest dataclass."""
 
@@ -47,7 +46,6 @@ class TestActiveRequest:
         assert t2 > t1
 
 
-@pytest.mark.unit
 class TestRequestLifecycle:
     """Tests for start, complete, error lifecycle."""
 
@@ -85,7 +83,6 @@ class TestRequestLifecycle:
         state.request_errored("nonexistent", "boom")  # should not raise
 
 
-@pytest.mark.unit
 class TestMultipleActiveRequests:
     """Tests for concurrent request tracking."""
 
@@ -111,7 +108,6 @@ class TestMultipleActiveRequests:
         assert active[0]["request_id"] == "req-2"
 
 
-@pytest.mark.unit
 class TestChunkHandling:
     """Tests for chunk handling."""
 
@@ -121,8 +117,6 @@ class TestChunkHandling:
         state.chunk_received("nonexistent", "data")  # should not raise
 
 
-@pytest.mark.unit
-@pytest.mark.asyncio
 class TestSubscriptionFanOut:
     """Tests for subscriber queue fan-out."""
 
@@ -178,7 +172,6 @@ class TestSubscriptionFanOut:
         assert result is None
 
 
-@pytest.mark.unit
 class TestUnsubscribe:
     """Tests for unsubscribe."""
 
@@ -259,7 +252,6 @@ SAMPLE_LOG_WITH_ERROR = {
 }
 
 
-@pytest.mark.unit
 class TestParseLogFile:
     """Tests for _parse_log_file."""
 
@@ -303,7 +295,6 @@ class TestParseLogFile:
         assert result is None
 
 
-@pytest.mark.unit
 class TestGetRecentLogs:
     """Tests for _get_recent_logs."""
 
@@ -348,7 +339,6 @@ class TestGetRecentLogs:
         assert len(result) == 2
 
 
-@pytest.mark.unit
 class TestDashboardPage:
     """Tests for GET /dashboard."""
 
@@ -374,7 +364,6 @@ class TestDashboardPage:
         assert 'class="nav-item" href="/dashboard/chat">Chat</a>' in resp.text
 
 
-@pytest.mark.unit
 class TestDashboardChatPage:
     """Tests for GET /dashboard/chat."""
 
@@ -431,7 +420,6 @@ class TestDashboardChatPage:
         assert 'id="stream"' not in resp.text
 
 
-@pytest.mark.unit
 class TestDashboardPool:
     """Tests for GET /dashboard/pool."""
 
@@ -468,7 +456,6 @@ class TestDashboardPool:
         assert "0/1 capacity" in resp.text
 
 
-@pytest.mark.unit
 class TestDashboardRequests:
     """Tests for GET /dashboard/requests."""
 
@@ -549,7 +536,6 @@ class TestDashboardRequests:
         assert "request-row-active" in content
 
 
-@pytest.mark.unit
 @pytest.mark.parametrize(
     "path",
     [
@@ -567,7 +553,6 @@ def test_dashboard_routes_reject_invalid_request_ids(path):
     assert response.json() == {"detail": "Invalid request ID"}
 
 
-@pytest.mark.unit
 class TestDashboardRequestDetail:
     """Tests for GET /dashboard/request/{request_id}."""
 
@@ -602,7 +587,6 @@ class TestDashboardRequestDetail:
         assert resp.status_code == 404
 
 
-@pytest.mark.unit
 class TestDashboardStream:
     """Tests for GET /dashboard/stream/{request_id}."""
 

@@ -43,16 +43,8 @@
 
     <section class="meta-grid" aria-label="Request metadata">
         <div class="meta-item">
-            <div class="meta-label">API Key</div>
-            <div class="meta-value mono">{{ api_key }}</div>
-        </div>
-        <div class="meta-item">
             <div class="meta-label">Started</div>
             <div class="meta-value">{{ timestamp or "Active" }}</div>
-        </div>
-        <div class="meta-item">
-            <div class="meta-label">Completed</div>
-            <div class="meta-value">{% if is_active %}Pending{% else %}{{ timestamp or "-" }}{% endif %}</div>
         </div>
         <div class="meta-item">
             <div class="meta-label">Duration</div>
@@ -75,10 +67,7 @@
     <section class="detail-grid">
         <div class="panel">
             <div class="panel-header">
-                <div class="panel-tabs">
-                    <span class="panel-tab active">Messages</span>
-                    <span class="panel-tab">Attachments</span>
-                </div>
+                <div class="panel-title">Messages</div>
                 {% if messages %}<span class="count-pill">{{ messages|length }}</span>{% endif %}
             </div>
             <div class="panel-body">
@@ -90,26 +79,6 @@
                         <span>{% if timestamp %}{{ timestamp[11:19] }}{% endif %}</span>
                     </summary>
                     <pre>{{ msg.content }}</pre>
-                    {% if msg.attachments %}
-                    <div class="attachments">
-                        {% for att in msg.attachments %}
-                            {% if att.content_type == "url" %}
-                                <a href="{{ att.url }}" target="_blank" rel="noopener">
-                                    <img class="attachment-img" src="{{ att.url }}" loading="lazy" alt="attachment">
-                                </a>
-                            {% elif att.media_type.startswith("image/") %}
-                                <a href="/dashboard/attachment/{{ request_id }}/{{ att.filename }}" target="_blank">
-                                    <img class="attachment-img" src="/dashboard/attachment/{{ request_id }}/{{ att.filename }}" loading="lazy" alt="attachment">
-                                </a>
-                            {% else %}
-                                <a class="attachment-link" href="/dashboard/attachment/{{ request_id }}/{{ att.filename }}" download="{{ att.filename }}">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path></svg>
-                                    {{ att.filename }}
-                                </a>
-                            {% endif %}
-                        {% endfor %}
-                    </div>
-                    {% endif %}
                 </details>
                 {% endfor %}
                 {% else %}
@@ -135,10 +104,7 @@
 
         <div class="panel">
             <div class="panel-header">
-                <div class="panel-tabs">
-                    <span class="panel-tab active">{% if error %}Response{% else %}Response{% endif %}</span>
-                    <span class="panel-tab">Info</span>
-                </div>
+                <div class="panel-title">Response</div>
             </div>
             <div class="panel-body">
                 {% if error %}

@@ -21,7 +21,6 @@ from agentbridge.models import (
 )
 
 
-@pytest.mark.unit
 class TestSimpleNames:
     """Tests for Claude Code model name resolution."""
 
@@ -50,7 +49,6 @@ class TestSimpleNames:
         assert resolve_model("ClaudeCode/HaIkU") == "haiku"
 
 
-@pytest.mark.unit
 class TestOpenRouterSlugs:
     """Tests for Claude Code slug resolution."""
 
@@ -110,7 +108,6 @@ class TestOpenRouterSlugs:
         assert resolve_model("ClaudeCode/Anthropic/Claude-Opus-4.5") == "opus"
 
 
-@pytest.mark.unit
 class TestCodexModels:
     """Tests for Codex model routing."""
 
@@ -144,7 +141,6 @@ class TestCodexModels:
         assert result.model == "gpt-5.5"
 
 
-@pytest.mark.unit
 class TestOpenRouterModels:
     """Tests for OpenRouter model routing."""
 
@@ -160,7 +156,6 @@ class TestOpenRouterModels:
             resolve_model_request("openrouter/claude-sonnet-4")
 
 
-@pytest.mark.unit
 class TestUnsupportedModels:
     """Tests for unsupported model error handling."""
 
@@ -210,7 +205,6 @@ class TestUnsupportedModels:
         assert error.model == "invalid-model"
 
 
-@pytest.mark.unit
 class TestMappingConsistency:
     """Tests for mapping configuration consistency."""
 
@@ -250,7 +244,6 @@ class TestMappingConsistency:
             }
 
 
-@pytest.mark.unit
 class TestEdgeCases:
     """Edge cases and boundary conditions."""
 
@@ -274,7 +267,6 @@ class TestEdgeCases:
         assert result == model
 
 
-@pytest.mark.unit
 class TestWordBoundaryMatching:
     """Tests for word-boundary aware model matching."""
 

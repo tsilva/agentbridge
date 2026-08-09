@@ -1,115 +1,48 @@
 # agentbridge
 
-Bridge OpenAI tools to Claude Code SDK, Codex CLI, and OpenRouter.
+Bridge OpenAI-compatible chat completions to Claude Code SDK, Codex CLI, and
+OpenRouter.
 
-## Quick Start
+## Source of truth
 
-```bash
-uv pip install -e .
-agentbridge
-```
+`README.md` owns the public product contract: installation, CLI usage, HTTP
+routes, model formats, environment variables, examples, and publishing. Keep it
+updated whenever those surfaces change instead of duplicating them here.
 
-## Endpoints
+## Implementation contract
 
-- `POST /api/v1/chat/completions` - Chat completions (streaming supported)
-- `GET /api/v1/models` - List available models
-- `GET /health` - Health check
+- Model IDs require an AgentBridge provider namespace: `claudecode/`, `codex/`,
+  or `openrouter/`. The request model is mandatory.
+- Both streaming and non-streaming `POST /api/v1/chat/completions` behavior are
+  public. Preserve OpenAI-compatible response and error shapes.
+- Claude clients are created lazily, reused by model, and capped by the worker
+  count. Do not warm clients at startup.
+- Claude sessions use `setting_sources=None`, the Claude Code preset system
+  prompt, and `tools=[]` for isolated pure-chat operation.
+- Codex runs ephemerally with read-only sandboxing, no approvals, and ignored
+  project rules. OpenAI-style tool calls are emulated through prompted JSON.
+- Session logs are displayed by the dashboard; saved attachments are persisted
+  alongside them. Preserve their existing schema.
 
-## Model Selection
+## Code map
 
-Model IDs must start with an AgentBridge provider namespace:
-
-**Supported formats:**
-- Claude Code: `claudecode/opus`, `claudecode/sonnet`, `claudecode/haiku`, or slugs containing those names, such as `claudecode/anthropic/claude-sonnet-4`
-- Codex CLI: `codex/<model>`, such as `codex/gpt-5.6-sol`
-- OpenRouter: `openrouter/<provider>/<model>`, such as `openrouter/anthropic/claude-sonnet-4`
-
-**Examples:**
-```python
-# Claude Code
-client.chat.completions.create(model="claudecode/sonnet", ...)
-
-# Codex CLI
-client.chat.completions.create(
-    model="codex/gpt-5.6-sol",
-    reasoning_effort="high",
-    messages=[...],
-)
-
-# OpenRouter
-client.chat.completions.create(model="openrouter/anthropic/claude-sonnet-4", ...)
-```
-
-Unsupported model IDs return HTTP 400 with an error message listing valid options.
-
-## Architecture
-
-```
+```text
 agentbridge/
-├── server.py         # FastAPI app, endpoints, provider adapters, session logging
-├── pool.py           # Dynamic client pool with model replacement
-├── models.py         # Pydantic models for OpenAI request/response format and model mapping
-├── dashboard.py      # Real-time dashboard with SSE for pool/request monitoring
-└── __init__.py       # Package version
+├── server.py      # FastAPI app, provider adapters, CLI, session logging
+├── pool.py        # Lazy Claude SDK client pool
+├── models.py      # OpenAI schemas and provider model resolution
+├── dashboard.py   # Dashboard routes and live request state
+└── config.py      # User configuration and log paths
 ```
 
-## Key Implementation Details
-
-- **Client Pool**: Lazy reusable Claude SDK clients — clients are created on first use for the requested model, returned to an idle pool after successful requests, and capped by the worker count. No clients are warmed at server boot.
-- **Concurrency**: Worker count controls concurrent requests (default: 1, configurable via `--workers`/`-w` flag or `POOL_SIZE` env var)
-- **Streaming**: SSE format matching OpenAI's streaming response
-- **Model selection**: Resolves required provider prefixes (`claudecode/`, `codex/`, `openrouter/`) before dispatch. Model parameter is required.
-- **Pure chat mode**: Tools are disabled (`tools=[]`) - Claude operates as a conversational assistant without file access, bash commands, or web access
-- **Isolated settings**: Uses `setting_sources=None` to not load user filesystem settings, providing isolation
-- **System prompt**: Uses `system_prompt={"type": "preset", "preset": "claude_code"}` to preserve the default Claude Code system prompt
-
-## Environment Variables
-
-- `POOL_SIZE` - Number of pooled clients (default: 1, configurable via `--workers`)
-- `CLAUDE_TIMEOUT` - Request timeout in seconds (default: 120)
-- `CODEX_TIMEOUT` - Codex request timeout in seconds (defaults to `CLAUDE_TIMEOUT`)
-- `OPENROUTER_TIMEOUT` - OpenRouter request timeout in seconds (defaults to `CLAUDE_TIMEOUT`)
-- `OPENROUTER_API_KEY` - API key required for OpenRouter requests
-- `PORT` - Server port (default: 8082)
-
-## Testing
+## Validation
 
 ```bash
-# Using Claude Code
-curl http://localhost:8082/api/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{"model": "claudecode/sonnet", "messages": [{"role": "user", "content": "Hello!"}]}'
-
-# Using Codex
-curl http://localhost:8082/api/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{"model": "codex/gpt-5.6-sol", "reasoning_effort": "high", "messages": [{"role": "user", "content": "Hello!"}]}'
-
-# Streaming
-curl http://localhost:8082/api/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{"model": "openrouter/anthropic/claude-sonnet-4", "messages": [{"role": "user", "content": "Hello!"}], "stream": true}'
+uv run --frozen --extra test pytest -q
+uv run --frozen --extra test ruff check agentbridge tests
+uv lock --check
+uv build
 ```
 
-## Usage with OpenAI Python Client
-
-```python
-from openai import OpenAI
-
-client = OpenAI(base_url="http://localhost:8082/api/v1", api_key="not-needed")
-response = client.chat.completions.create(
-    model="claudecode/sonnet",
-    messages=[{"role": "user", "content": "Hello!"}]
-)
-print(response.choices[0].message.content)
-```
-
-## Dependencies
-
-- `fastapi` - Web framework
-- `uvicorn` - ASGI server
-- `claude-agent-sdk` - Claude Code SDK for Python
-
-## README.md
-
-Keep README.md updated with any significant project changes.
+Use the native Codex Desktop in-app Browser for dashboard verification, and do
+not disturb an existing development server.

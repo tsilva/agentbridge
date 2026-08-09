@@ -29,7 +29,6 @@ class _ActiveRequest:
     __slots__ = (
         "request_id",
         "model",
-        "api_key",
         "start_time",
         "messages",
         "buffered_text",
@@ -40,12 +39,10 @@ class _ActiveRequest:
         self,
         request_id: str,
         model: str,
-        api_key: str | None = None,
         messages: list[dict] | None = None,
     ):
         self.request_id = request_id
         self.model = model
-        self.api_key = api_key
         self.start_time = time.monotonic()
         self.messages = messages or []
         self.buffered_text = ""
@@ -55,7 +52,6 @@ class _ActiveRequest:
         return {
             "request_id": self.request_id,
             "model": self.model,
-            "api_key": _mask_api_key(self.api_key),
             "elapsed_s": round(time.monotonic() - self.start_time, 2),
             "messages": self.messages,
             "buffered_text": self.buffered_text,
@@ -98,13 +94,11 @@ class DashboardState:
         self,
         request_id: str,
         model: str,
-        api_key: str | None = None,
         messages: list[dict] | None = None,
     ) -> None:
         self._active[request_id] = _ActiveRequest(
             request_id,
             model,
-            api_key=api_key,
             messages=messages,
         )
         self._notify()
@@ -167,15 +161,6 @@ class DashboardState:
 # ---------------------------------------------------------------------------
 # Route helpers
 # ---------------------------------------------------------------------------
-
-def _mask_api_key(api_key: str | None) -> str:
-    """Mask API key for display, showing only first 4 chars."""
-    if not api_key or api_key == "anonymous":
-        return "anonymous"
-    if len(api_key) <= 4:
-        return "***"
-    return api_key[:4] + "***"
-
 
 def _sse_data_lines(text: str) -> str:
     """Return text formatted as SSE data lines."""
@@ -250,7 +235,7 @@ def create_dashboard_router(
     Args:
         state: DashboardState instance for tracking active requests.
         pool_status_fn: Callable returning pool status dict with keys
-            'size', 'available', 'in_use'.
+            'size' and 'in_use'.
     """
     router = APIRouter()
 
@@ -285,7 +270,6 @@ def create_dashboard_router(
             "pool.html",
             {
                 "size": status.get("size", 0),
-                "available": status.get("available", 0),
                 "in_use": status.get("in_use", 0),
             },
         )
@@ -302,7 +286,6 @@ def create_dashboard_router(
                     status = pool_status_fn()
                     rendered = templates.get_template("pool.html").render(
                         size=status.get("size", 0),
-                        available=status.get("available", 0),
                         in_use=status.get("in_use", 0),
                     )
                     sse_data = _sse_data_lines(rendered)
@@ -333,7 +316,6 @@ def create_dashboard_router(
         completed = _get_recent_logs(limit=limit)
         for log in completed:
             log["is_active"] = False
-            log["api_key"] = _mask_api_key(log.get("api_key"))
             timing = log.get("timing") if isinstance(log.get("timing"), dict) else {}
             if log.get("duration_ms") is None:
                 log["duration_ms"] = timing.get("duration_ms", 0)
@@ -393,11 +375,8 @@ def create_dashboard_router(
                 {
                     "request_id": request_id,
                     "model": active["model"],
-                    "api_key": _mask_api_key(active.get("api_key")),
                     "timestamp": "",
                     "duration_ms": int(active["elapsed_s"] * 1000),
-                    "acquire_ms": None,
-                    "query_ms": None,
                     "input_tokens": None,
                     "output_tokens": None,
                     "error": None,
@@ -424,11 +403,8 @@ def create_dashboard_router(
             {
                 "request_id": parsed.get("request_id", request_id),
                 "model": parsed.get("model"),
-                "api_key": _mask_api_key(parsed.get("api_key")),
                 "timestamp": parsed.get("timestamp", ""),
                 "duration_ms": timing.get("duration_ms", 0),
-                "acquire_ms": timing.get("acquire_ms"),
-                "query_ms": timing.get("query_ms"),
                 "input_tokens": usage.get("input_tokens"),
                 "output_tokens": usage.get("output_tokens"),
                 "error": parsed.get("error"),
