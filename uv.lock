@@ -21,7 +21,7 @@ constraints = [
 
 [[package]]
 name = "agentbridge-py"
-version = "0.1.8"
+version = "0.1.9"
 source = { editable = "." }
 dependencies = [
     { name = "claude-agent-sdk" },
