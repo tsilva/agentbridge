@@ -44,5 +44,10 @@ uv lock --check
 uv build
 ```
 
+## Release workflow
+
+Use the project-level `$build-release` skill for version selection, release
+validation, publishing, GitHub Release creation, and PyPI verification.
+
 Use the native Codex Desktop in-app Browser for dashboard verification, and do
 not disturb an existing development server.

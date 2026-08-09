@@ -1,0 +1,4 @@
+interface:
+  display_name: "Build Release"
+  short_description: "Build and publish AgentBridge releases"
+  default_prompt: "Use $build-release to validate, publish, and verify an AgentBridge release."
