@@ -114,6 +114,21 @@ class TestSessionLoggerWrite:
         assert logger.log_path.exists()
         assert logger.log_path.suffix == ".json"
 
+    def test_store_false_creates_no_log_artifacts(self, tmp_path):
+        log_dir = tmp_path / "not-created"
+        os.environ["LOG_DIR"] = str(log_dir)
+        logger = SessionLogger("test-private", "codex/gpt-5.6-sol", store=False)
+        logger.log_chunk("sensitive output")
+        logger.write(
+            [Message(role="user", content="sensitive input")],
+            stream=False,
+            temperature=None,
+            max_tokens=None,
+        )
+
+        assert not log_dir.exists()
+        assert not logger.log_path.exists()
+
     def test_write_valid_json(self):
         """Log file is valid JSON."""
         logger = SessionLogger("test-123", "sonnet")
