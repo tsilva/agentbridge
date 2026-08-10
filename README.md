@@ -6,7 +6,7 @@
 
 agentbridge is a local API bridge for developers who want to connect OpenAI-compatible apps to Claude Code, Codex, or OpenRouter. Run one server, choose a backend with a namespaced model ID, and point existing Chat Completions clients at `http://localhost:8082/api/v1`.
 
-It supports streaming and non-streaming responses, image and PDF inputs where the backend accepts them, OpenAI-style tool calls, a live dashboard, and local JSON session logs.
+It supports streaming and non-streaming responses, image and PDF inputs where the backend accepts them, native Codex image editing, strict JSON Schema output, OpenAI-style tool calls, a live dashboard, and local JSON session logs.
 
 > **Legal notice:** agentbridge can use Claude Code SDK and Codex CLI access through your local subscriptions, and can forward requests to OpenRouter when configured. You are responsible for determining whether your use complies with each service's terms. Use it conservatively and at your own risk.
 
@@ -65,6 +65,19 @@ response = client.chat.completions.create(
 print(response.choices[0].message.content)
 ```
 
+Codex can also edit one bounded PNG, JPEG, or WebP reference through the
+purpose-built image route. The request is non-persistent and returns one base64
+raster:
+
+```bash
+curl http://localhost:8082/api/v1/images \
+  -H "Content-Type: application/json" \
+  -d "{\"model\":\"codex/gpt-5.6-sol\",\"prompt\":\"Make this look like a scanner capture without changing any content.\",\"input_references\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,$PAGE_DATA\"}}],\"n\":1,\"store\":false}"
+```
+
+`GET /api/v1/capabilities` reports whether the local Codex CLI is available,
+authenticated, and supports the strict image and JSON-schema profiles.
+
 ## Commands
 
 ```bash
@@ -81,13 +94,15 @@ uv build                                              # build wheel and source d
 ## Notes
 
 - Python 3.12+ and at least one authenticated backend are required.
-- Public routes are `POST /api/v1/chat/completions`, `GET /api/v1/models`, `GET /health`, `/dashboard`, and `/dashboard/chat`.
-- `PORT`, `POOL_SIZE`, `CLAUDE_TIMEOUT`, `CODEX_TIMEOUT`, and `OPENROUTER_TIMEOUT` control the server port, pool size, and provider timeouts. `--workers` overrides `POOL_SIZE`.
+- Public routes include `POST /api/v1/chat/completions`, `POST /api/v1/images`, `GET /api/v1/models`, `GET /api/v1/capabilities`, `GET /health`, `/dashboard`, and `/dashboard/chat`.
+- `PORT`, `POOL_SIZE`, `CLAUDE_TIMEOUT`, `CODEX_TIMEOUT`, `CODEX_IMAGE_TIMEOUT`, and `OPENROUTER_TIMEOUT` control the server port, pool size, and provider timeouts. `--workers` overrides `POOL_SIZE`; native image generation defaults to a 600-second timeout.
+- `MAX_IMAGE_INPUT_BYTES`, `MAX_IMAGE_OUTPUT_BYTES`, and `MAX_IMAGE_PIXELS` bound native image requests. Defaults are 64 MiB input, 32 MiB output, and 40 million pixels.
 - `AGENTBRIDGE_CONFIG_DIR` moves the user configuration directory. `LOG_DIR` moves session logs, and `MAX_LOG_FILES` limits retained JSON logs.
 - `OPENROUTER_API_KEY`, `OPENROUTER_SITE_URL`, and `OPENROUTER_APP_NAME` configure OpenRouter requests. Process environment variables take precedence over the user `.env` file.
 - Claude clients are created lazily, reused by model, and capped by the worker count. Claude sessions do not load filesystem settings and run with built-in tools disabled.
-- Codex runs one ephemeral `codex exec` process per request in a temporary directory with read-only sandboxing, no approvals, and project rules ignored.
+- Codex runs one ephemeral `codex exec` process per request in a temporary directory with read-only sandboxing, no approvals, and project rules ignored. Multimodal structured-output calls also ignore user config and disable execution and image-generation tools. Native image calls use the same strict profile, keep execution disabled, and enable the image-generation capability needed for the edit.
 - Claude and Codex function calls are represented through prompted JSON; OpenRouter tool calls pass through its SDK. Session logs and extracted image or PDF attachments are saved under `~/.config/agentbridge/logs/sessions` by default.
+- Set `store: false` on chat requests to suppress session-log artifacts. The native image route requires `store: false`, accepts data URLs only, validates both rasters, locates the result from the structured Codex thread ID, and removes that thread's generated-image directory after the request.
 
 ## Publishing
 

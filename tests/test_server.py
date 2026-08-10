@@ -7,6 +7,8 @@ Usage:
 - pytest tests/test_server.py -v
 """
 
+import base64
+import io
 import json
 import os
 from importlib.metadata import version
@@ -15,6 +17,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from agentbridge import __version__
 from agentbridge.models import (
@@ -30,11 +33,15 @@ from agentbridge.models import (
 from agentbridge.server import (
     ClaudeResponse,
     _build_codex_command,
+    _cleanup_codex_generated_thread,
+    _codex_output_schema,
     _message_from_openrouter,
     _openrouter_client_kwargs,
     _openrouter_payload,
     _openrouter_to_dict,
     _parse_codex_json_lines,
+    _parse_codex_run,
+    _read_codex_generated_image,
     _resolve_codex_reasoning_effort,
     _usage_from_openrouter,
     app,
@@ -46,6 +53,12 @@ from agentbridge.server import (
     main,
     parse_tool_response,
 )
+
+
+def _png_bytes() -> bytes:
+    output = io.BytesIO()
+    Image.new("RGB", (8, 10), "white").save(output, format="PNG")
+    return output.getvalue()
 
 
 class TestFormatMessages:
@@ -353,6 +366,86 @@ class TestCodexHelpers:
         image_arg_index = cmd.index("--image")
         assert cmd[image_arg_index + 1] == "/tmp/work/image.png"
 
+    def test_strict_image_command_isolates_config_and_enables_only_image_profile(self):
+        with patch("agentbridge.server._codex_binary", return_value="/bin/codex"):
+            cmd = _build_codex_command(
+                "gpt-5.6-sol",
+                Path("/tmp/work"),
+                Path("/tmp/work/out.txt"),
+                [Path("/tmp/work/reference.png")],
+                "high",
+                output_schema=Path("/tmp/work/schema.json"),
+                strict=True,
+                image_generation=True,
+            )
+
+        exec_index = cmd.index("exec")
+        assert cmd.index("--disable") < exec_index
+        assert cmd[exec_index + 1 : exec_index + 5] == [
+            "--json",
+            "--ephemeral",
+            "--ignore-user-config",
+            "--ignore-rules",
+        ]
+        assert ["--disable", "shell_tool"] == cmd[3:5]
+        assert "unified_exec" in cmd[:exec_index]
+        assert "image_generation" in cmd[:exec_index]
+        assert cmd[cmd.index("--output-schema") + 1] == "/tmp/work/schema.json"
+
+    def test_parse_codex_run_extracts_trusted_thread_and_disallowed_tool_types(self):
+        thread_id = "019feb8d-47c8-78e2-ba97-2d62a15b71c0"
+        output = "\n".join(
+            [
+                json.dumps({"type": "thread.started", "thread_id": thread_id}),
+                json.dumps(
+                    {
+                        "type": "item.completed",
+                        "item": {"type": "command_execution", "command": "pwd"},
+                    }
+                ),
+            ]
+        )
+
+        parsed = _parse_codex_run(output)
+
+        assert parsed.thread_id == thread_id
+        assert parsed.unexpected_tool_types == ("command_execution",)
+
+    def test_codex_output_schema_extracts_openai_wrapper(self):
+        schema = {"type": "object", "properties": {"ok": {"type": "boolean"}}}
+        assert _codex_output_schema(
+            {
+                "type": "json_schema",
+                "json_schema": {"name": "answer", "strict": True, "schema": schema},
+            }
+        ) == schema
+
+    def test_generated_image_is_read_only_from_exact_thread_directory(
+        self, tmp_path, monkeypatch
+    ):
+        thread_id = "019feb8d-47c8-78e2-ba97-2d62a15b71c0"
+        directory = tmp_path / "generated_images" / thread_id
+        directory.mkdir(parents=True)
+        expected = _png_bytes()
+        (directory / "result.png").write_bytes(expected)
+        monkeypatch.setenv("CODEX_HOME", str(tmp_path))
+
+        assert _read_codex_generated_image(thread_id) == expected
+        _cleanup_codex_generated_thread(thread_id)
+        assert not directory.exists()
+
+    def test_generated_image_size_is_checked_before_reading(self, tmp_path, monkeypatch):
+        thread_id = "019feb8d-47c8-78e2-ba97-2d62a15b71c0"
+        directory = tmp_path / "generated_images" / thread_id
+        directory.mkdir(parents=True)
+        (directory / "result.png").write_bytes(_png_bytes())
+        monkeypatch.setenv("CODEX_HOME", str(tmp_path))
+
+        with patch("agentbridge.server.MAX_IMAGE_OUTPUT_BYTES", 4), pytest.raises(
+            RuntimeError, match="size limit"
+        ):
+            _read_codex_generated_image(thread_id)
+
     def test_parse_codex_json_lines_extracts_assistant_text_and_usage(self):
         """Codex JSONL parser handles assistant item and usage events."""
         output = "\n".join(
@@ -600,8 +693,9 @@ class TestFormatMultimodalMessages:
 
 # Test the FastAPI app with TestClient
 @pytest.fixture
-def test_client():
+def test_client(tmp_path, monkeypatch):
     """Create test client with mocked pool."""
+    monkeypatch.setenv("LOG_DIR", str(tmp_path / "session-logs"))
     # We need to mock the pool to avoid connecting to real SDK
     with patch("agentbridge.server.pool") as mock_pool:
         # Create a mock that can be used with async context manager
@@ -687,6 +781,113 @@ class TestModelsEndpoint:
             assert model["object"] == "model"
 
 
+class TestCapabilitiesEndpoint:
+    """Tests for the explicit Codex capability contract."""
+
+    def test_reports_authenticated_strict_codex_features(self, test_client):
+        probe = AsyncMock(
+            side_effect=[
+                (0, "codex-cli 0.144.1"),
+                (0, "Logged in using ChatGPT"),
+                (0, "image_generation stable true\n"),
+                (
+                    0,
+                    "--disable --ephemeral --ignore-user-config --ignore-rules --sandbox "
+                    "--output-schema",
+                ),
+            ]
+        )
+        with patch("agentbridge.server._codex_probe", new=probe):
+            response = test_client.get("/api/v1/capabilities")
+
+        assert response.status_code == 200
+        codex = response.json()["codex"]
+        assert codex == {
+            "available": True,
+            "authenticated": True,
+            "cli_version": "0.144.1",
+            "image_generation": True,
+            "json_schema": True,
+            "strict_profiles": True,
+        }
+
+
+class TestImageGenerationEndpoint:
+    """Tests for the bounded native Codex image-generation route."""
+
+    def test_returns_one_valid_base64_image(self, test_client):
+        source = _png_bytes()
+        generated = _png_bytes()
+        call = AsyncMock(
+            return_value=(generated, {"input_tokens": 11, "output_tokens": 7})
+        )
+        with (
+            patch("agentbridge.server._call_codex_image", new=call),
+            patch.object(
+                dashboard_state,
+                "request_started",
+                wraps=dashboard_state.request_started,
+            ) as started,
+        ):
+            response = test_client.post(
+                "/api/v1/images",
+                json={
+                    "model": "codex/gpt-5.6-sol",
+                    "prompt": "Make this look like a scanner capture without changing content.",
+                    "input_references": [
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": "data:image/png;base64,"
+                                + base64.b64encode(source).decode("ascii")
+                            },
+                        }
+                    ],
+                    "n": 1,
+                    "store": False,
+                },
+            )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert base64.b64decode(body["data"][0]["b64_json"]) == generated
+        assert body["usage"] == {
+            "prompt_tokens": 11,
+            "completion_tokens": 7,
+            "total_tokens": 18,
+        }
+        assert body["usage_scope"] == "codex_orchestration_only"
+        assert call.await_args.kwargs["source_data"] == source
+        assert started.call_args.kwargs["messages"] == [
+            {"role": "user", "content": "[image generation request]"}
+        ]
+
+    @pytest.mark.parametrize(
+        ("model", "reference", "store"),
+        [
+            ("claudecode/sonnet", "data:image/png;base64,abc", False),
+            ("codex/gpt-5.6-sol", "https://example.com/page.png", False),
+            ("codex/gpt-5.6-sol", "data:image/png;base64,abc", True),
+        ],
+    )
+    def test_rejects_non_codex_remote_or_persistent_requests(
+        self, test_client, model, reference, store
+    ):
+        response = test_client.post(
+            "/api/v1/images",
+            json={
+                "model": model,
+                "prompt": "clean this page",
+                "input_references": [
+                    {"type": "image_url", "image_url": {"url": reference}}
+                ],
+                "store": store,
+            },
+        )
+
+        assert response.status_code == 400
+
+
 class TestChatCompletionsValidation:
     """Tests for /api/v1/chat/completions request validation."""
 
@@ -749,6 +950,56 @@ class TestChatCompletionsValidation:
         )
         # Should not be 422 (validation error)
         assert response.status_code != 422
+
+    def test_codex_multimodal_schema_request_uses_strict_profile_without_storage(
+        self, test_client
+    ):
+        provider_response = ClaudeResponse()
+        provider_response.text = '{"ok":true}'
+        call = AsyncMock(return_value=provider_response)
+        source = base64.b64encode(_png_bytes()).decode("ascii")
+        schema = {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["ok"],
+            "properties": {"ok": {"type": "boolean"}},
+        }
+
+        with patch("agentbridge.server.call_codex_cli", new=call):
+            response = test_client.post(
+                "/api/v1/chat/completions",
+                json={
+                    "model": "codex/gpt-5.6-sol",
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": "Inspect this untrusted page."},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/png;base64,{source}"
+                                    },
+                                },
+                            ],
+                        }
+                    ],
+                    "response_format": {
+                        "type": "json_schema",
+                        "json_schema": {
+                            "name": "verdict",
+                            "strict": True,
+                            "schema": schema,
+                        },
+                    },
+                    "store": False,
+                },
+            )
+
+        assert response.status_code == 200
+        assert call.await_args.kwargs["output_schema"] == schema
+        assert call.await_args.kwargs["strict"] is True
+        assert call.await_args.args[2].store is False
 
 
 class TestNonStreamingDashboardLifecycle:

@@ -94,6 +94,24 @@ class ChatCompletionRequest(BaseModel):
     top_logprobs: int | None = None
     parallel_tool_calls: bool | None = None
     stream_options: dict | None = None
+    store: bool | None = None
+
+
+class ImageReference(BaseModel):
+    type: Literal["image_url"]
+    image_url: ImageUrl
+
+
+class ImageGenerationRequest(BaseModel):
+    model: str
+    prompt: str = Field(min_length=1, max_length=20_000)
+    input_references: list[ImageReference] = Field(min_length=1, max_length=1)
+    n: Literal[1] = 1
+    store: Literal[False] = False
+
+
+class ImageData(BaseModel):
+    b64_json: str
 
 
 class Choice(BaseModel):
@@ -106,6 +124,15 @@ class Usage(BaseModel):
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
+
+
+class ImageGenerationResponse(BaseModel):
+    id: str
+    created: int
+    model: str
+    data: list[ImageData]
+    usage: Usage = Field(default_factory=Usage)
+    usage_scope: Literal["codex_orchestration_only"] = "codex_orchestration_only"
 
 
 class ChatCompletionResponse(BaseModel):
