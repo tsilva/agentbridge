@@ -651,9 +651,7 @@ app.include_router(
 
 # Timeout for provider calls (in seconds)
 CLAUDE_TIMEOUT = int(os.environ.get("CLAUDE_TIMEOUT", 120))
-CODEX_TIMEOUT = int(
-    os.environ.get("CODEX_TIMEOUT", os.environ.get("CLAUDE_TIMEOUT", 120))
-)
+CODEX_TIMEOUT = int(os.environ.get("CODEX_TIMEOUT", 600))
 CODEX_IMAGE_TIMEOUT = int(os.environ.get("CODEX_IMAGE_TIMEOUT", 600))
 OPENROUTER_TIMEOUT = int(
     os.environ.get("OPENROUTER_TIMEOUT", os.environ.get("CLAUDE_TIMEOUT", 120))

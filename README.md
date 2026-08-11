@@ -95,7 +95,7 @@ uv build                                              # build wheel and source d
 
 - Python 3.12+ and at least one authenticated backend are required.
 - Public routes include `POST /api/v1/chat/completions`, `POST /api/v1/images`, `GET /api/v1/models`, `GET /api/v1/capabilities`, `GET /health`, `/dashboard`, and `/dashboard/chat`.
-- `PORT`, `POOL_SIZE`, `CLAUDE_TIMEOUT`, `CODEX_TIMEOUT`, `CODEX_IMAGE_TIMEOUT`, and `OPENROUTER_TIMEOUT` control the server port, pool size, and provider timeouts. `--workers` overrides `POOL_SIZE`; native image generation defaults to a 600-second timeout.
+- `PORT`, `POOL_SIZE`, `CLAUDE_TIMEOUT`, `CODEX_TIMEOUT`, `CODEX_IMAGE_TIMEOUT`, and `OPENROUTER_TIMEOUT` control the server port, pool size, and provider timeouts. `--workers` overrides `POOL_SIZE`; Codex chat and native image generation default to 600-second timeouts, while Claude and OpenRouter default to 120 seconds.
 - `MAX_IMAGE_INPUT_BYTES`, `MAX_IMAGE_OUTPUT_BYTES`, and `MAX_IMAGE_PIXELS` bound native image requests. Defaults are 64 MiB input, 32 MiB output, and 40 million pixels.
 - `AGENTBRIDGE_CONFIG_DIR` moves the user configuration directory. `LOG_DIR` moves session logs, and `MAX_LOG_FILES` limits retained JSON logs.
 - `OPENROUTER_API_KEY`, `OPENROUTER_SITE_URL`, and `OPENROUTER_APP_NAME` configure OpenRouter requests. Process environment variables take precedence over the user `.env` file.
