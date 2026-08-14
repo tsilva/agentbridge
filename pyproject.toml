@@ -17,7 +17,7 @@ classifiers = [
     "Framework :: FastAPI",
 ]
 dependencies = [
-    "fastapi>=0.115.0",
+    "fastapi>=0.141.1",
     "uvicorn[standard]>=0.32.0",
     "claude-agent-sdk>=0.1.0",
     "openrouter==0.9.1",
