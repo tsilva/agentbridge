@@ -13,9 +13,19 @@ It supports streaming and non-streaming responses, image and PDF inputs where th
 ## Install
 
 ```bash
-uv tool install agentbridge-py
+uv tool install agentbridge-cli
 agentbridge
 ```
+
+If you installed an earlier release under the previous PyPI distribution name,
+migrate once with:
+
+```bash
+uv tool uninstall agentbridge-py
+uv tool install agentbridge-cli
+```
+
+The Python import and executable remain `agentbridge`.
 
 Open the [dashboard](http://localhost:8082/dashboard), try the built-in [chat](http://localhost:8082/dashboard/chat), or use `http://localhost:8082/api/v1` as an OpenAI-compatible base URL.
 
@@ -106,7 +116,7 @@ uv build                                              # build wheel and source d
 
 ## Publishing
 
-Releases use the `Release` GitHub Actions workflow and PyPI Trusted Publishing for the `agentbridge-py` project. The publisher is scoped to owner `tsilva`, repository `agentbridge`, workflow `release.yml`, and environment `pypi`; no PyPI API token is required.
+Releases use the `Release` GitHub Actions workflow and PyPI Trusted Publishing for the `agentbridge-cli` project. The publisher is scoped to owner `tsilva`, repository `agentbridge`, workflow `release.yml`, and environment `pypi`; no PyPI API token is required. Releases through `0.1.10` remain available under the previous `agentbridge-py` distribution name.
 
 ## Architecture
 

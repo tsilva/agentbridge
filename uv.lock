@@ -7,11 +7,11 @@ exclude-newer = "0001-01-01T00:00:00Z" # This has no effect and is included for 
 exclude-newer-span = "P7D"
 
 [options.exclude-newer-package]
-stable-retro-turbo = false
-vizdoom-turbo = false
-gradoom = false
-supermariobrosnes-turbo = false
-breakout-turbo-env = false
+stable-retro-turbo = "2026-08-13T20:30:00Z"
+vizdoom-turbo = "2026-08-13T20:30:00Z"
+gradoom = "2026-08-13T20:30:00Z"
+supermariobrosnes-turbo = "2026-08-13T20:30:00Z"
+breakout-turbo-env = "2026-08-13T20:30:00Z"
 gradlab = false
 
 [manifest]
@@ -21,8 +21,8 @@ constraints = [
 ]
 
 [[package]]
-name = "agentbridge-py"
-version = "0.1.10"
+name = "agentbridge-cli"
+version = "0.1.11"
 source = { editable = "." }
 dependencies = [
     { name = "claude-agent-sdk" },
