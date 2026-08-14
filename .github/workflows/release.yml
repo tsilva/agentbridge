@@ -138,7 +138,7 @@ jobs:
           import tomllib
           import zipfile
 
-          expected_name = "agentbridge-py"
+          expected_name = "agentbridge-cli"
           names = set()
 
           for wheel in glob.glob("dist/*.whl"):
@@ -206,7 +206,7 @@ jobs:
     timeout-minutes: 10
     environment:
       name: pypi
-      url: https://pypi.org/project/agentbridge-py/
+      url: https://pypi.org/project/agentbridge-cli/
     permissions:
       contents: read
       id-token: write

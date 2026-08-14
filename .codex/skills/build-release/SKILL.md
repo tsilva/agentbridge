@@ -1,6 +1,6 @@
 ---
 name: build-release
-description: Build, publish, and verify AgentBridge releases. Use when the user invokes /build-release or asks to cut, launch, tag, publish, monitor, or verify an agentbridge-py PyPI or GitHub release.
+description: Build, publish, and verify AgentBridge releases. Use when the user invokes /build-release or asks to cut, launch, tag, publish, monitor, or verify an agentbridge-cli PyPI or GitHub release.
 ---
 
 # Build Release
@@ -9,7 +9,7 @@ Use the repository-owned GitHub Actions workflow and PyPI Trusted Publishing.
 Do not create a local tag or upload with local credentials: pushing a new
 `pyproject.toml` version to `main` triggers `.github/workflows/release.yml`,
 which tests, scans, builds, creates `v<version>`, creates the GitHub Release,
-and publishes `agentbridge-py`.
+and publishes `agentbridge-cli`.
 
 Use the next unused patch version unless the user requests another valid,
 unused semantic version. Treat an untagged version absent from PyPI as pending.
