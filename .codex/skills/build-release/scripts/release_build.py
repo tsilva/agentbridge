@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Select, build, audit, and verify agentbridge-py releases."""
+"""Select, build, audit, and verify agentbridge-cli releases."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ import zipfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
-PACKAGE_NAME = "agentbridge-py"
+PACKAGE_NAME = "agentbridge-cli"
 IMPORT_NAME = "agentbridge"
 VERSION_PATTERN = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 TEST_PYTHONS = ("3.12", "3.13")
