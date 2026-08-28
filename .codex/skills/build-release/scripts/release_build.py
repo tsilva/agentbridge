@@ -313,8 +313,10 @@ def preflight_macos_app(version: str) -> dict[str, object]:
         raise SystemExit("the AgentBridge release preflight requires macOS for app validation")
 
     architecture = platform.machine()
-    if architecture not in {"arm64", "x86_64"}:
-        raise SystemExit(f"unsupported macOS release architecture: {architecture}")
+    if architecture != "arm64":
+        raise SystemExit(
+            f"unsupported macOS release architecture: {architecture}; AgentBridge requires arm64"
+        )
 
     run(["swift", "test", "--package-path", "macos"])
     run(["scripts/build_macos_app.sh"])
