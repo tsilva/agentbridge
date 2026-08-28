@@ -42,6 +42,7 @@ from agentbridge.server import (
     _openrouter_to_dict,
     _parse_codex_json_lines,
     _parse_codex_run,
+    _print_banner,
     _read_codex_generated_image,
     _resolve_codex_reasoning_effort,
     _usage_from_openrouter,
@@ -771,6 +772,15 @@ class TestCliConfiguration:
             main()
 
         assert os.environ["POOL_SIZE"] == "2"
+
+    def test_banner_uses_native_signal_mark(self, tmp_path, capsys):
+        _print_banner(8082, 3, 120, tmp_path)
+
+        output = capsys.readouterr().out
+        assert "AgentBridge" in output
+        assert "←────" in output
+        assert "────→" in output
+        assert "╭───╮       ╭───╮" not in output
 
 
 class TestModelsEndpoint:

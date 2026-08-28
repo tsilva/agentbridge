@@ -20,6 +20,12 @@
       "height": 275
     },
     {
+      "key": "favicon-svg",
+      "path": "web-seo/favicon/favicon.svg",
+      "width": 32,
+      "height": 32
+    },
+    {
       "key": "favicon-16",
       "path": "web-seo/favicon/favicon-16.png",
       "width": 16,

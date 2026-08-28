@@ -6,12 +6,14 @@ Usage:
 """
 
 import asyncio
+import io
 import json
 import os
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from agentbridge.dashboard import (
     DashboardState,
@@ -354,18 +356,21 @@ class TestDashboardPage:
     """Tests for GET /dashboard."""
 
     def test_returns_html_with_agentbridge(self):
-        """Dashboard page returns HTML containing 'agentbridge'."""
+        """Dashboard page returns HTML containing the AgentBridge brand."""
         app = _make_app()
         client = TestClient(app)
         resp = client.get("/dashboard")
         assert resp.status_code == 200
         assert "text/html" in resp.headers["content-type"]
-        assert "agentbridge" in resp.text
+        assert "AgentBridge" in resp.text
         assert "request_id" in resp.text
         assert "loadSelectedDetail" in resp.text
         assert "/dashboard/request/" in resp.text
-        assert 'href="/dashboard/brand/favicon.ico"' in resp.text
-        assert 'href="/dashboard/brand/site.webmanifest"' in resp.text
+        assert 'href="/favicon.ico"' in resp.text
+        assert 'href="/favicon.svg"' in resp.text
+        assert 'href="/favicon-32.png"' in resp.text
+        assert 'href="/favicon-16.png"' in resp.text
+        assert 'href="/site.webmanifest"' in resp.text
         assert "MutationObserver" not in resp.text
 
     def test_dashboard_links_to_chat(self):
@@ -382,12 +387,28 @@ class TestDashboardPage:
         client = TestClient(app)
 
         favicon = client.get("/dashboard/brand/favicon.ico")
+        root_favicon = client.get("/favicon.ico")
+        vector_favicon = client.get("/favicon.svg")
+        favicon_32 = client.get("/favicon-32.png")
         manifest = client.get("/dashboard/brand/site.webmanifest")
+        root_manifest = client.get("/site.webmanifest")
 
         assert favicon.status_code == 200
         assert favicon.headers["content-type"].startswith("image/x-icon")
+        assert favicon.headers["cache-control"] == "public, max-age=86400"
+        assert root_favicon.content == favicon.content
+        assert vector_favicon.status_code == 200
+        assert vector_favicon.headers["content-type"].startswith("image/svg+xml")
+        assert b"AgentBridge" not in vector_favicon.content
+        with Image.open(io.BytesIO(root_favicon.content)) as icon:
+            assert icon.ico.sizes() == {(16, 16), (32, 32), (48, 48)}
+        with Image.open(io.BytesIO(favicon_32.content)) as icon:
+            assert icon.size == (32, 32)
         assert manifest.status_code == 200
         assert manifest.json()["theme_color"] == "#00483D"
+        assert root_manifest.json() == manifest.json()
+        assert client.get("/android-chrome-192.png").status_code == 200
+        assert client.get("/apple-touch-icon.png").status_code == 200
         assert client.get("/dashboard/brand/not-allowed.svg").status_code == 404
 
 

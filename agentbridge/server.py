@@ -71,9 +71,9 @@ load_user_env()
 _SERVER_STARTED_AT = datetime.now(timezone.utc)
 _SERVER_STARTED_MONOTONIC = time.monotonic()
 
-# Claude palette (24-bit true color)
-_CLAUDE = "\033[38;2;218;119;86m"  # Terracotta — Claude's signature orange
-_CLAUDE_DIM = "\033[38;2;171;93;67m"  # Muted terracotta for secondary accents
+# Native Signal palette (24-bit true color)
+_BRAND_FIR = "\033[38;2;0;107;91m"
+_BRAND_SIGNAL = "\033[38;2;255;122;115m"
 _DIM = "\033[2m"
 _BOLD = "\033[1m"
 _YELLOW = "\033[33m"
@@ -2842,14 +2842,18 @@ def get_version() -> str:
 
 
 def _print_banner(port: int, workers: int, timeout: int, config_dir: Path) -> None:
-    """Print clean startup banner with ASCII art bridge and colors."""
+    """Print the Native Signal startup banner."""
     version = get_version()
-    print(f"\n  {_CLAUDE}   ╭───╮       ╭───╮{_RESET}")
-    print(f"  {_CLAUDE}═══╯   ╰═══════╯   ╰═══{_RESET}")
-    print(f"  {_CLAUDE_DIM}   │   │       │   │{_RESET}")
-    print(f"  {_BOLD}{_CLAUDE}agentbridge{_RESET} {_DIM}v{version}{_RESET}\n")
-    print(f"  {_DIM}Dashboard{_RESET}  {_CLAUDE}http://127.0.0.1:{port}/dashboard{_RESET}")
-    print(f"  {_DIM}API{_RESET}        {_CLAUDE}http://127.0.0.1:{port}/api/v1{_RESET}")
+    print(f"\n  {_BRAND_FIR}╭──────────╮{_RESET}")
+    print(f"  {_BRAND_FIR}│{_RESET} {_BRAND_SIGNAL}←────{_RESET}     {_BRAND_FIR}│{_RESET}")
+    print(f"  {_BRAND_FIR}│{_RESET}     {_BRAND_SIGNAL}────→{_RESET} {_BRAND_FIR}│{_RESET}")
+    print(f"  {_BRAND_SIGNAL}╰──────────╯{_RESET}")
+    print(f"  {_BOLD}{_BRAND_FIR}AgentBridge{_RESET} {_DIM}v{version}{_RESET}\n")
+    print(
+        f"  {_DIM}Dashboard{_RESET}  "
+        f"{_BRAND_FIR}http://127.0.0.1:{port}/dashboard{_RESET}"
+    )
+    print(f"  {_DIM}API{_RESET}        {_BRAND_FIR}http://127.0.0.1:{port}/api/v1{_RESET}")
     print(f"  {_DIM}Config{_RESET}     {config_dir}")
     print(f"  {_DIM}Workers{_RESET}    {_BOLD}{workers}{_RESET}")
     print(f"  {_DIM}Timeout{_RESET}    {timeout}s")

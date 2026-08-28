@@ -37,6 +37,10 @@ struct SettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
+            brandHeader
+
+            Divider()
+
             serverSection
 
             Divider()
@@ -50,7 +54,21 @@ struct SettingsView: View {
         .padding(24)
         .frame(width: 440)
         .fixedSize(horizontal: false, vertical: true)
+        .tint(AgentBridgeBrand.fir)
         .onAppear(perform: reload)
+    }
+
+    private var brandHeader: some View {
+        HStack(spacing: 12) {
+            AgentBridgeBrandMark(size: 34)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("AgentBridge")
+                    .font(.title3.weight(.semibold))
+                Text("Settings")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 
     private var serverSection: some View {
