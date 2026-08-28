@@ -14,10 +14,10 @@ It supports streaming and non-streaming responses, image and PDF inputs where th
 
 ### macOS menu-bar app
 
-Download the DMG for your Mac architecture from the GitHub Release, drag
+On an Apple silicon Mac, download the arm64 DMG from the GitHub Release, drag
 `AgentBridge.app` to Applications, and open it. The app is ad-hoc signed rather
 than Apple-notarized, so on first launch macOS may require you to Control-click
-the app, choose **Open**, and confirm.
+the app, choose **Open**, and confirm. Intel Macs are not supported.
 
 You can also build the app locally on macOS 13 or later. This requires
 [uv](https://docs.astral.sh/uv/) and the Xcode Command Line Tools, but not an
@@ -153,8 +153,8 @@ Releases use the `Release` GitHub Actions workflow and PyPI Trusted Publishing
 for the `agentbridge-cli` project. The publisher is scoped to owner `tsilva`,
 repository `agentbridge`, workflow `release.yml`, and environment `pypi`; no
 PyPI API token is required. GitHub Releases contain the Python distributions
-plus ad-hoc-signed arm64 and x86_64 macOS DMGs and SHA-256 checksums. These DMGs
-are not Apple-notarized and require no Apple Developer credentials. Releases
+plus an ad-hoc-signed arm64 macOS DMG and SHA-256 checksum. The DMG is not
+Apple-notarized and requires no Apple Developer credentials. Releases
 through `0.1.10` remain available under the previous `agentbridge-py`
 distribution name.
 

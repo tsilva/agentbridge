@@ -32,15 +32,15 @@ scripts/build_macos_app.sh
 
 The script builds the Swift executable, embeds a uv-managed Python 3.12 runtime
 and the locked AgentBridge dependencies, applies an ad-hoc signature for local
-use, and creates a DMG for the current Mac architecture under
-`build/macos/<architecture>/`. Building and running this local app does not
-require an Apple Developer account.
+use, and creates an arm64 DMG under `build/macos/arm64/`. Building and running
+this local app requires an Apple silicon Mac but does not require an Apple
+Developer account.
 
 Open the generated DMG and drag `AgentBridge.app` to Applications.
 
-GitHub Releases provide the same ad-hoc-signed DMG for arm64 and x86_64 Macs.
-They are not Apple-notarized, so macOS may require you to Control-click the app,
-choose **Open**, and confirm on first launch.
+GitHub Releases provide the same ad-hoc-signed DMG for Apple silicon Macs. It is
+not Apple-notarized, so macOS may require you to Control-click the app, choose
+**Open**, and confirm on first launch. Intel Macs are not supported.
 
 Mutable data stays outside the application bundle:
 

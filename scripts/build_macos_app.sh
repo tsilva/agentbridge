@@ -23,11 +23,11 @@ with Path("pyproject.toml").open("rb") as file:
 PY
 )"
 
-case "${architecture}" in
-    arm64) artifact_architecture="arm64" ;;
-    x86_64) artifact_architecture="x86_64" ;;
-    *) echo "Unsupported macOS architecture: ${architecture}" >&2; exit 1 ;;
-esac
+if [[ "${architecture}" != "arm64" ]]; then
+    echo "Unsupported macOS architecture: ${architecture}; AgentBridge requires arm64" >&2
+    exit 1
+fi
+artifact_architecture="arm64"
 
 if [[ "${output_root}" != "${repository_root}"/build/macos/* ]]; then
     echo "Refusing to replace unexpected build directory: ${output_root}" >&2
