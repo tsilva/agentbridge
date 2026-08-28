@@ -32,10 +32,12 @@ struct StatusPopover: View {
         .padding(.bottom, 16)
         .frame(width: 350)
         .fixedSize(horizontal: false, vertical: true)
+        .tint(AgentBridgeBrand.fir)
     }
 
     private var header: some View {
-        HStack {
+        HStack(spacing: 8) {
+            AgentBridgeBrandMark(size: 24)
             Text("AgentBridge")
                 .font(.system(size: 17, weight: .bold))
             Spacer()
@@ -264,7 +266,7 @@ private struct ActivityProgressBar: View {
                     .fill(.secondary.opacity(0.18))
                 if value > 0 {
                     Capsule()
-                        .fill(.blue)
+                        .fill(AgentBridgeBrand.fir)
                         .frame(
                             width: max(
                                 10,

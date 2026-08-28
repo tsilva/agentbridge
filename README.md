@@ -1,10 +1,10 @@
 <div align="center">
-  <img src="./logo.png" alt="agentbridge" width="512" />
+  <img src="./logo.png" alt="AgentBridge" width="512" />
 
-  **🌉 Bridge OpenAI tools to Claude Code SDK, Codex CLI, or OpenRouter — use your subscriptions anywhere 🔌**
+  **OpenAI-compatible routing for Claude Code, Codex, and OpenRouter — use your subscriptions anywhere.**
 </div>
 
-agentbridge is a local API bridge for developers who want to connect OpenAI-compatible apps to Claude Code, Codex, or OpenRouter. Run one server, choose a backend with a namespaced model ID, and point existing Chat Completions clients at `http://localhost:8082/api/v1`.
+AgentBridge is a local API bridge for developers who want to connect OpenAI-compatible apps to Claude Code, Codex, or OpenRouter. Run one server, choose a backend with a namespaced model ID, and point existing Chat Completions clients at `http://localhost:8082/api/v1`.
 
 It supports streaming and non-streaming responses, image and PDF inputs where the backend accepts them, native Codex image editing, strict JSON Schema output, OpenAI-style tool calls, a live dashboard, and local JSON session logs.
 
