@@ -56,6 +56,10 @@ struct StatusPopover: View {
     }
 
     private var statusSummary: String {
+        if controller.phase == .runningManaged || controller.phase == .runningExternal {
+            return "Connected"
+        }
+
         let version = controller.versionLabel
         return version.isEmpty
             ? controller.phase.label
@@ -134,15 +138,20 @@ struct StatusPopover: View {
             Button {
                 Task { await controller.refresh() }
             } label: {
-                Image(systemName: "arrow.clockwise")
-                    .font(.system(size: 14, weight: .regular))
+                HStack(spacing: 9) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 15, weight: .regular))
+                        .frame(width: 16)
+
+                    Text(updatedLabel)
+                        .font(.system(size: 13, weight: .medium))
+                }
+                .foregroundStyle(secondaryTextColor)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .help("Refresh")
-
-            Text(updatedLabel)
-                .font(.system(size: 13, weight: .regular))
-                .foregroundStyle(secondaryTextColor)
+            .accessibilityLabel("Refresh status, \(updatedLabel)")
 
             Spacer()
 

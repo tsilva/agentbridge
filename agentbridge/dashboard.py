@@ -180,6 +180,14 @@ def _validate_request_id(request_id: str) -> None:
 
 
 TEMPLATES_DIR = Path(__file__).parent / "templates" / "dashboard"
+BRAND_ASSETS_DIR = Path(__file__).parent / "static" / "brand"
+_BRAND_ASSET_MEDIA_TYPES = {
+    "favicon.ico": "image/x-icon",
+    "apple-touch-icon.png": "image/png",
+    "android-chrome-192.png": "image/png",
+    "android-chrome-512.png": "image/png",
+    "site.webmanifest": "application/manifest+json",
+}
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 
@@ -242,6 +250,14 @@ def create_dashboard_router(
             'size' and 'in_use'.
     """
     router = APIRouter()
+
+    @router.get("/dashboard/brand/{filename}")
+    async def dashboard_brand_asset(filename: str):
+        """Serve the small packaged asset set used by dashboard chrome."""
+        media_type = _BRAND_ASSET_MEDIA_TYPES.get(filename)
+        if media_type is None:
+            raise HTTPException(status_code=404, detail="Brand asset not found")
+        return FileResponse(BRAND_ASSETS_DIR / filename, media_type=media_type)
 
     @router.get("/dashboard", response_class=HTMLResponse)
     async def dashboard_page(request: Request):

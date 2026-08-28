@@ -364,6 +364,8 @@ class TestDashboardPage:
         assert "request_id" in resp.text
         assert "loadSelectedDetail" in resp.text
         assert "/dashboard/request/" in resp.text
+        assert 'href="/dashboard/brand/favicon.ico"' in resp.text
+        assert 'href="/dashboard/brand/site.webmanifest"' in resp.text
         assert "MutationObserver" not in resp.text
 
     def test_dashboard_links_to_chat(self):
@@ -373,6 +375,20 @@ class TestDashboardPage:
         resp = client.get("/dashboard")
         assert resp.status_code == 200
         assert 'class="nav-item" href="/dashboard/chat">Chat</a>' in resp.text
+
+    def test_serves_packaged_brand_assets(self):
+        """Dashboard chrome assets are available from the installed package."""
+        app = _make_app()
+        client = TestClient(app)
+
+        favicon = client.get("/dashboard/brand/favicon.ico")
+        manifest = client.get("/dashboard/brand/site.webmanifest")
+
+        assert favicon.status_code == 200
+        assert favicon.headers["content-type"].startswith("image/x-icon")
+        assert manifest.status_code == 200
+        assert manifest.json()["theme_color"] == "#00483D"
+        assert client.get("/dashboard/brand/not-allowed.svg").status_code == 404
 
 
 class TestDashboardChatPage:
