@@ -23,16 +23,20 @@ AGENTBRIDGE_SERVER_EXECUTABLE=/absolute/path/to/agentbridge \
 
 ## Build the self-contained application
 
+Install [uv](https://docs.astral.sh/uv/) and the Xcode Command Line Tools, then
+run this command from the repository root:
+
 ```bash
 scripts/build_macos_app.sh
 ```
 
 The script builds the Swift executable, embeds a uv-managed Python 3.12 runtime
 and the locked AgentBridge dependencies, applies an ad-hoc signature for local
-testing, and creates a DMG under `build/macos/<architecture>/`.
+use, and creates a DMG for the current Mac architecture under
+`build/macos/<architecture>/`. Building and running this local app does not
+require an Apple Developer account.
 
-Set `CODE_SIGN_IDENTITY` to a Developer ID Application identity for a release
-build. Notarization is performed by the release workflow after the DMG is built.
+Open the generated DMG and drag `AgentBridge.app` to Applications.
 
 Mutable data stays outside the application bundle:
 

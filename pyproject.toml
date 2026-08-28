@@ -1,6 +1,6 @@
 [project]
 name = "agentbridge-cli"
-version = "0.1.11"
+version = "0.1.12"
 description = "Bridge OpenAI tools to Claude Code SDK, Codex CLI, and OpenRouter"
 readme = "README.md"
 license = {text = "MIT"}
