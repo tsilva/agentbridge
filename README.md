@@ -12,6 +12,21 @@ It supports streaming and non-streaming responses, image and PDF inputs where th
 
 ## Install
 
+### macOS menu-bar app
+
+Download the DMG for your Mac architecture from the GitHub Release, drag
+`AgentBridge.app` to Applications, and open it. The menu-bar window shows live
+server health and activity, starts and stops the local server, opens the
+dashboard, and provides settings for the port, worker count, and launch at
+login.
+
+The app contains its own Python 3.12 runtime and AgentBridge dependencies. It
+does not bundle the Claude Code or Codex executables: installed provider tools
+and their existing authentication state remain in the user account. Mutable
+configuration and logs continue to live under `~/.config/agentbridge/`.
+
+### Command line
+
 ```bash
 uv tool install agentbridge-cli
 agentbridge
@@ -97,14 +112,17 @@ agentbridge --workers 3                               # set Claude pool and Code
 agentbridge --version                                 # print package and git version
 uv run --frozen --extra test pytest -q                # run tests
 uv run --frozen --extra test ruff check agentbridge tests  # lint Python
+swift test --package-path macos                    # test the macOS app
+scripts/build_macos_app.sh                         # build a local signed app and DMG
 uv lock --check                                       # verify the lockfile
 uv build                                              # build wheel and source distribution
 ```
 
 ## Notes
 
-- Python 3.12+ and at least one authenticated backend are required.
+- The CLI requires Python 3.12+; the macOS app bundles Python. At least one authenticated backend is required for provider requests.
 - Public routes include `POST /api/v1/chat/completions`, `POST /api/v1/images`, `GET /api/v1/models`, `GET /api/v1/capabilities`, `GET /health`, `/dashboard`, and `/dashboard/chat`.
+- `GET /health` includes safe operator status used by the menu-bar app: version, start time, uptime, configured workers, active requests, and pool state when initialized.
 - `PORT`, `POOL_SIZE`, `CLAUDE_TIMEOUT`, `CODEX_TIMEOUT`, `CODEX_IMAGE_TIMEOUT`, and `OPENROUTER_TIMEOUT` control the server port, pool size, and provider timeouts. `--workers` overrides `POOL_SIZE`; Codex chat and native image generation default to 600-second timeouts, while Claude and OpenRouter default to 120 seconds.
 - `MAX_IMAGE_INPUT_BYTES`, `MAX_IMAGE_OUTPUT_BYTES`, and `MAX_IMAGE_PIXELS` bound native image requests. Defaults are 64 MiB input, 32 MiB output, and 40 million pixels.
 - `AGENTBRIDGE_CONFIG_DIR` moves the user configuration directory. `LOG_DIR` moves session logs, and `MAX_LOG_FILES` limits retained JSON logs.
@@ -116,7 +134,14 @@ uv build                                              # build wheel and source d
 
 ## Publishing
 
-Releases use the `Release` GitHub Actions workflow and PyPI Trusted Publishing for the `agentbridge-cli` project. The publisher is scoped to owner `tsilva`, repository `agentbridge`, workflow `release.yml`, and environment `pypi`; no PyPI API token is required. Releases through `0.1.10` remain available under the previous `agentbridge-py` distribution name.
+Releases use the `Release` GitHub Actions workflow and PyPI Trusted Publishing
+for the `agentbridge-cli` project. The publisher is scoped to owner `tsilva`,
+repository `agentbridge`, workflow `release.yml`, and environment `pypi`; no
+PyPI API token is required. When the `MACOS_RELEASE_ENABLED` repository variable
+is `true`, the same workflow builds, Developer ID-signs, notarizes, and attaches
+arm64 and x86_64 DMGs and checksums to the GitHub Release. See
+[`macos/README.md`](macos/README.md) for local app builds. Releases through
+`0.1.10` remain available under the previous `agentbridge-py` distribution name.
 
 ## Architecture
 

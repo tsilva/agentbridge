@@ -11,6 +11,7 @@ import base64
 import io
 import json
 import os
+import signal
 from importlib.metadata import version
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -44,6 +45,7 @@ from agentbridge.server import (
     _read_codex_generated_image,
     _resolve_codex_reasoning_effort,
     _usage_from_openrouter,
+    _watch_parent_process,
     app,
     build_tool_prompt,
     dashboard_state,
@@ -721,6 +723,22 @@ class TestHealthEndpoint:
         data = response.json()
         assert data["status"] == "ok"
         assert data["version"] == __version__ == version("agentbridge-cli")
+        assert data["workers"] >= 1
+        assert data["active_requests"] == 0
+        assert data["uptime_seconds"] >= 0
+        assert data["started_at"].endswith("+00:00")
+
+
+async def test_parent_watch_terminates_after_owner_exits():
+    with (
+        patch("agentbridge.server.os.getppid", side_effect=[1234, 1]),
+        patch("agentbridge.server.asyncio.sleep", new=AsyncMock()),
+        patch("agentbridge.server.os.kill") as kill,
+        patch("agentbridge.server.os.getpid", return_value=5678),
+    ):
+        await _watch_parent_process(1234)
+
+    kill.assert_called_once_with(5678, signal.SIGTERM)
 
 
 class TestCliConfiguration:

@@ -7,6 +7,7 @@ import argparse
 import email.parser
 import hashlib
 import json
+import platform
 import re
 import subprocess
 import sys
@@ -307,6 +308,40 @@ def smoke_wheel(wheel: Path, version: str) -> None:
         run([str(installed_python), "-c", code])
 
 
+def preflight_macos_app(version: str) -> dict[str, object]:
+    if sys.platform != "darwin":
+        raise SystemExit("the AgentBridge release preflight requires macOS for app validation")
+
+    architecture = platform.machine()
+    if architecture not in {"arm64", "x86_64"}:
+        raise SystemExit(f"unsupported macOS release architecture: {architecture}")
+
+    run(["swift", "test", "--package-path", "macos"])
+    run(["scripts/build_macos_app.sh"])
+
+    output = REPO_ROOT / "build" / "macos" / architecture
+    app = output / "AgentBridge.app"
+    dmg = output / f"AgentBridge-{version}-macos-{architecture}.dmg"
+    checksum = Path(f"{dmg}.sha256")
+    run(["scripts/verify_macos_app.sh", str(app)])
+
+    if not dmg.is_file() or not checksum.is_file():
+        raise SystemExit(f"macOS release artifacts are missing under {output}")
+    recorded_hash = checksum.read_text(encoding="utf-8").split(maxsplit=1)[0]
+    actual_hash = sha256(dmg)
+    if recorded_hash != actual_hash:
+        raise SystemExit(f"macOS DMG checksum mismatch: {dmg.name}")
+
+    result = {
+        "file": dmg.name,
+        "sha256": actual_hash,
+        "architecture": architecture,
+        "signing": "local preflight signature",
+    }
+    print(json.dumps({"macos_app": result}, indent=2))
+    return result
+
+
 def preflight(args: argparse.Namespace) -> None:
     version = args.version
     check_version(version)
@@ -342,6 +377,7 @@ def preflight(args: argparse.Namespace) -> None:
             ".codex/skills/build-release/scripts/release_build.py",
         ]
     )
+    macos_result = preflight_macos_app(version)
     with tempfile.TemporaryDirectory(prefix="agentbridge-release-") as directory:
         output = Path(directory) / "dist"
         run(["uv", "build", "--out-dir", str(output)])
@@ -356,7 +392,11 @@ def preflight(args: argparse.Namespace) -> None:
         smoke_wheel(wheels[0], version)
         print(
             json.dumps(
-                {"package": PACKAGE_NAME, "version": version, "artifacts": results},
+                {
+                    "package": PACKAGE_NAME,
+                    "version": version,
+                    "artifacts": results + [macos_result],
+                },
                 indent=2,
             )
         )

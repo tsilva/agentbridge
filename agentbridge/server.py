@@ -8,6 +8,7 @@ import logging
 import os
 import re
 import shutil
+import signal
 import stat
 import tempfile
 import time
@@ -66,6 +67,9 @@ from .models import (
 from .pool import ClientPool
 
 load_user_env()
+
+_SERVER_STARTED_AT = datetime.now(timezone.utc)
+_SERVER_STARTED_MONOTONIC = time.monotonic()
 
 # Claude palette (24-bit true color)
 _CLAUDE = "\033[38;2;218;119;86m"  # Terracotta — Claude's signature orange
@@ -624,6 +628,14 @@ async def ensure_claude_pool() -> ClientPool:
         return new_pool
 
 
+async def _watch_parent_process(parent_pid: int, interval: float = 1.0) -> None:
+    """Terminate gracefully if the owning menu-bar process disappears."""
+    while os.getppid() == parent_pid:
+        await asyncio.sleep(interval)
+    logging.info("AgentBridge owner exited; shutting down the managed server")
+    os.kill(os.getpid(), signal.SIGTERM)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage application lifespan - initialize and shutdown provider resources."""
@@ -632,10 +644,26 @@ async def lifespan(app: FastAPI):
     _pool_lock = asyncio.Lock()
     codex_semaphore = asyncio.Semaphore(_pool_size)
 
-    yield
-    if pool is not None:
-        await pool.shutdown()
-        pool = None
+    parent_watch_task: asyncio.Task | None = None
+    raw_parent_pid = os.environ.get("AGENTBRIDGE_PARENT_PID")
+    if raw_parent_pid:
+        try:
+            parent_watch_task = asyncio.create_task(_watch_parent_process(int(raw_parent_pid)))
+        except ValueError:
+            logging.warning("Ignoring invalid AGENTBRIDGE_PARENT_PID")
+
+    try:
+        yield
+    finally:
+        if parent_watch_task is not None:
+            parent_watch_task.cancel()
+            try:
+                await parent_watch_task
+            except asyncio.CancelledError:
+                pass
+        if pool is not None:
+            await pool.shutdown()
+            pool = None
 
 
 app = FastAPI(title="AgentBridge", version=__version__, lifespan=lifespan)
@@ -2790,8 +2818,15 @@ async def list_models():
 
 @app.get("/health")
 async def health():
-    """Health check endpoint with pool status."""
-    result = {"status": "ok", "version": __version__}
+    """Health check endpoint with safe runtime status for local operators."""
+    result = {
+        "status": "ok",
+        "version": __version__,
+        "started_at": _SERVER_STARTED_AT.isoformat(),
+        "uptime_seconds": round(time.monotonic() - _SERVER_STARTED_MONOTONIC, 3),
+        "workers": _pool_size,
+        "active_requests": dashboard_state.active_request_count(),
+    }
     if pool is not None:
         result["pool"] = pool.status()
     return result

@@ -30,6 +30,7 @@ def make_options(model: str):
     from claude_agent_sdk import ClaudeAgentOptions
 
     return ClaudeAgentOptions(
+        cli_path=os.environ.get("CLAUDE_BIN"),
         max_turns=1,
         setting_sources=None,  # Don't load user filesystem settings
         system_prompt={"type": "preset", "preset": "claude_code"},

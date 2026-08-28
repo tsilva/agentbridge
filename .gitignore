@@ -54,4 +54,6 @@ logs/
 *$py.class
 .claude/settings.local.json
 .eggs/
+.build/
+.swiftpm/
 _build_info.py

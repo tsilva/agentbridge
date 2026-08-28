@@ -7,11 +7,11 @@ exclude-newer = "0001-01-01T00:00:00Z" # This has no effect and is included for 
 exclude-newer-span = "P7D"
 
 [options.exclude-newer-package]
-stable-retro-turbo = "2026-08-13T20:30:00Z"
-vizdoom-turbo = "2026-08-13T20:30:00Z"
-gradoom = "2026-08-13T20:30:00Z"
-supermariobrosnes-turbo = "2026-08-13T20:30:00Z"
-breakout-turbo-env = "2026-08-13T20:30:00Z"
+env-gradoom-turbo-torch = false
+env-vizdoom-turbo = false
+env-breakoutatari2600-turbo-native = false
+env-stableretro-turbo = false
+env-supermariobrosnes-turbo-emu = false
 gradlab = false
 
 [manifest]
