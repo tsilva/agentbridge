@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import XCTest
 @testable import AgentBridgeMenuBar
@@ -70,5 +71,78 @@ final class StatusModelsTests: XCTestCase {
         XCTAssertEqual(paths.filter { $0 == "/opt/homebrew/bin" }.count, 1)
         XCTAssertTrue(paths.contains("/Users/example/.local/bin"))
         XCTAssertTrue(paths.contains("/Users/example/.npm-global/bin"))
+    }
+
+    @MainActor
+    func testMenuBarBadgeIsHiddenWithoutActiveWorkers() throws {
+        let (canvas, button, presenter) = makeMenuBarFixture(activeWorkers: 0)
+
+        XCTAssertTrue(presenter.badgeView.isHidden)
+        XCTAssertNil(presenter.badgeView.displayedCount)
+        XCTAssertEqual(button.toolTip, "AgentBridge: Running")
+
+        try writeSnapshot(
+            of: canvas,
+            requestedBy: "AGENTBRIDGE_STATUS_ITEM_ZERO_SNAPSHOT_PATH"
+        )
+    }
+
+    @MainActor
+    func testMenuBarBadgeShowsActiveWorkerCount() throws {
+        let (canvas, button, presenter) = makeMenuBarFixture(activeWorkers: 48)
+
+        XCTAssertFalse(presenter.badgeView.isHidden)
+        XCTAssertEqual(presenter.badgeView.displayedCount, 48)
+        XCTAssertEqual(button.toolTip, "AgentBridge: Running, 48 active workers")
+        XCTAssertEqual(button.image?.isTemplate, false)
+
+        try writeSnapshot(
+            of: canvas,
+            requestedBy: "AGENTBRIDGE_STATUS_ITEM_SNAPSHOT_PATH"
+        )
+    }
+
+    @MainActor
+    private func makeMenuBarFixture(
+        activeWorkers: Int
+    ) -> (NSView, NSStatusBarButton, MenuBarStatusPresenter) {
+        let canvas = NSView(frame: NSRect(x: 0, y: 0, width: 48, height: 31))
+        canvas.appearance = NSAppearance(named: .darkAqua)
+        canvas.wantsLayer = true
+        canvas.layer?.backgroundColor = NSColor(
+            calibratedRed: 0.01,
+            green: 0.22,
+            blue: 0.19,
+            alpha: 1
+        ).cgColor
+
+        let button = NSStatusBarButton(frame: NSRect(x: 8, y: 4, width: 32, height: 22))
+        button.isBordered = false
+        canvas.addSubview(button)
+        let presenter = MenuBarStatusPresenter()
+        presenter.install(on: button)
+        presenter.update(
+            button: button,
+            phase: .runningManaged,
+            activeWorkers: activeWorkers
+        )
+        return (canvas, button, presenter)
+    }
+
+    @MainActor
+    private func writeSnapshot(of view: NSView, requestedBy environmentKey: String) throws {
+        guard let snapshotPath = ProcessInfo.processInfo.environment[environmentKey] else {
+            return
+        }
+
+        view.layoutSubtreeIfNeeded()
+        let representation = try XCTUnwrap(
+            view.bitmapImageRepForCachingDisplay(in: view.bounds)
+        )
+        view.cacheDisplay(in: view.bounds, to: representation)
+        let data = try XCTUnwrap(
+            representation.representation(using: .png, properties: [:])
+        )
+        try data.write(to: URL(fileURLWithPath: snapshotPath), options: .atomic)
     }
 }
