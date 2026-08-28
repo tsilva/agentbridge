@@ -1,53 +1,45 @@
-# AgentBridge macOS status window design QA
+# AgentBridge external-management row design QA
 
-- Source visual truth: `/var/folders/wz/x29jb7_x5rdc_5dcjr4qnhg00000gn/T/codex-clipboard-7d264239-152f-42e2-bddb-e728cf5fe09e.png`
-- Earlier implementation evidence: `/var/folders/wz/x29jb7_x5rdc_5dcjr4qnhg00000gn/T/codex-clipboard-74c41c50-e709-4cde-83b5-b9cd35a70a65.png`
-- Revised implementation screenshot: `/Users/tsilva/repos/tsilva/agentbridge/design-qa-implementation.png`
-- Source dimensions: 788 × 570 pixels; the 702 × 447 popover region was cropped and normalized to 350 × 223 pixels for the focused typography comparison.
-- Implementation viewport and capture: 350 × 366 native logical pixels at scale 1 in the debug NSWindow host.
-- State: external AgentBridge server running, zero active requests, one worker, Claude Code available, Codex connected.
+## Evidence
 
-## Full-view comparison evidence
+- Source visual truth: `/var/folders/wz/x29jb7_x5rdc_5dcjr4qnhg00000gn/T/codex-clipboard-a99a20bd-c92f-4734-98a7-d3e03360d25a.png`, with the user-requested target being complete removal of the visible row
+- Source pixels: 664 × 127 at Retina density
+- Implementation: `/Applications/AgentBridge.app`
+- Implementation screenshot: pending user-provided capture
+- Viewport: native macOS status popover, 350-point content width, Retina display
+- State to capture: external server running so no Start or Stop action is available
 
-The revised implementation uses the same 350-point content width as the normalized reference. It preserves the reference hierarchy: compact bold title, small secondary connection line and status dot, 14–15 point section heading/value pairing, slim rounded activity track, 12–13 point metadata, fine dividers, and a restrained refresh footer. Its additional backend and lifecycle rows intentionally make the AgentBridge panel taller than the quota-only reference.
+## Findings
 
-The implementation screenshot is hosted in a debug NSWindow so Computer Use can capture it. Production uses the same `StatusPopover` view inside `MenuBarExtra(.window)`; the debug-only title-bar controls are absent from the menu-bar popover.
+- [Blocked] The revised app is built, installed, and running, but post-fix visual evidence is pending because the user requested that Computer Use not be used and will provide screenshots directly.
+- Functional structure: the “Managed externally” label and its action row are removed. The first and second divider no longer render around an empty row. Start and Stop remain available in states where either action is valid.
+- Fonts and typography: the unwanted label is absent by construction; remaining typography awaits the implementation screenshot.
+- Spacing and layout rhythm: the external-server state now flows from server activity to one footer divider with no empty action band. Final visible gap verification is pending.
+- Colors and visual tokens: no tokens were added or changed.
+- Image quality and assets: this change contains no image assets or icons.
+- Copy and content: the duplicate external-management message is removed; the status summary remains the single place that communicates the externally running state.
 
-## Focused-region comparison evidence
+## Open Questions
 
-The source popover was cropped and downsampled from 702 pixels to 350 pixels wide, then opened beside the 350-pixel implementation in the same comparison input. At equal width, the title cap height, connection line, section heading, metadata, gear, status dot, progress track, and footer now have the same compact optical scale. No remaining text is a full hierarchy step larger than its reference counterpart.
+- Does the user-provided post-fix screenshot show the activity-to-footer spacing as compact and balanced?
 
-## Required fidelity surfaces
+## Implementation Checklist
 
-- Fonts and typography: passed. Both use San Francisco system typography. Revised sizes are 18 pt title, 12 pt connection line, 14–15 pt activity heading/value, 12 pt metadata, 13 pt backend/footer copy, and 11–12 pt auxiliary controls.
-- Spacing and layout rhythm: passed. Width is 350 points with 20-point side padding; section gaps, dividers, and control sizing were tightened with the type scale. Extra height is expected from AgentBridge-specific backend and lifecycle controls.
-- Colors and visual tokens: passed. Native material, secondary foregrounds, semantic green, blue activity fill, and divider opacity match the source language. Material tint varies with the desktop behind the window.
-- Image quality and assets: passed. The panel requires no raster imagery; visible controls use native SF Symbols. The debug title-bar controls are capture-host infrastructure, not production content.
-- Copy and content: passed. Copy is live AgentBridge status rather than the quota-specific reference content, as intended.
+- [x] Remove the “Managed externally” label.
+- [x] Remove the entire action row when neither Start nor Stop is available.
+- [x] Collapse duplicate dividers and row padding in the external-server state.
+- [x] Preserve actionable Start and Stop rows.
+- [x] Run Swift tests and patch-format validation.
+- [x] Build, sign, verify, install, and launch the updated app.
+- [ ] Compare a user-provided post-fix screenshot against the source crop.
 
-## Comparison history
+## Comparison History
 
-### Iteration 1
+1. Source evidence showed a non-actionable “Managed externally” row occupying a full band between two dividers.
+2. The implementation conditionally renders the entire action section only when Start or Stop is available. Automated tests and bundle verification pass; visual comparison awaits the user capture.
 
-- Earlier finding [P1]: the 25 pt title, 16 pt status line, 18–19 pt activity heading/value, 14–15 pt supporting copy, 20 pt gear, 11 pt track, and 400 pt panel made the entire interface visibly oversized beside the supplied reference.
-- Fix: reduced the panel to 350 points, reset the hierarchy to 11–18 point type, reduced the status dot and SF Symbols, changed buttons to small control sizing, slimmed the activity track to 8 points, and tightened padding and vertical gaps.
-- Post-fix evidence: `design-qa-implementation.png`, compared at the same 350-pixel width with `/tmp/agentbridge-reference-panel.png`.
+## Follow-up Polish
 
-### Final pass
+- None classified until the post-fix screenshot is available.
 
-No actionable P0, P1, or P2 typography, spacing, color, asset, copy, or interaction findings remain. Swift tests pass and the rebuilt `.app` and DMG contain the corrected shared production view.
-
-## Follow-up polish
-
-- [P3] Native material tint and outer corner rendering vary slightly by macOS version, wallpaper, and whether the view is hosted in the debug window or production menu-bar popover.
-
-## Implementation checklist
-
-- [x] Reference-width typography comparison
-- [x] Compact system type hierarchy
-- [x] Matching icon, dot, track, and control scale
-- [x] Tightened panel spacing
-- [x] Shared production and capture view
-- [x] Rebuilt app and DMG
-
-final result: passed
+final result: blocked

@@ -8,49 +8,49 @@ struct StatusPopover: View {
         VStack(alignment: .leading, spacing: 0) {
             header
             statusLine
-                .padding(.top, 7)
+                .padding(.top, 2)
 
             activity
-                .padding(.top, 24)
-
-            Divider()
-                .padding(.vertical, 18)
-
-            backendStatus
-            actions
-                .padding(.top, 16)
-
-            Divider()
                 .padding(.top, 18)
 
+            if hasServerAction {
+                Divider()
+                    .padding(.top, 16)
+
+                actions
+                    .padding(.top, 12)
+            }
+
+            Divider()
+                .padding(.top, hasServerAction ? 14 : 16)
+
             footer
-                .padding(.top, 14)
+                .padding(.top, 10)
         }
         .padding(.horizontal, 20)
         .padding(.top, 18)
         .padding(.bottom, 16)
         .frame(width: 350)
-        .background(.ultraThinMaterial)
-        .task { controller.begin() }
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     private var header: some View {
         HStack {
             Text("AgentBridge")
-                .font(.system(size: 18, weight: .bold))
+                .font(.system(size: 17, weight: .bold))
             Spacer()
             settingsButton
         }
     }
 
     private var statusLine: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 7) {
             Circle()
                 .fill(controller.phase.color)
-                .frame(width: 8, height: 8)
+                .frame(width: 7, height: 7)
             Text(statusSummary)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.secondary)
+                .font(.system(size: 11, weight: .regular))
+                .foregroundStyle(secondaryTextColor)
                 .lineLimit(1)
         }
     }
@@ -63,13 +63,13 @@ struct StatusPopover: View {
     }
 
     private var activity: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 9) {
             HStack(alignment: .firstTextBaseline) {
                 Text("Server activity")
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.system(size: 14, weight: .semibold))
                 Spacer()
                 Text(activityLabel)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.system(size: 14, weight: .semibold))
             }
 
             ActivityProgressBar(
@@ -82,13 +82,15 @@ struct StatusPopover: View {
                 Spacer()
                 Text("\(controller.workerCount) worker\(controller.workerCount == 1 ? "" : "s")")
             }
-            .font(.system(size: 12, weight: .medium))
-            .foregroundStyle(.secondary)
+            .font(.system(size: 11, weight: .regular))
+            .foregroundStyle(secondaryTextColor)
 
             if let detail = controller.detail {
                 Text(detail)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(controller.phase == .conflict ? .red : .secondary)
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundStyle(
+                        controller.phase == .conflict ? .red : secondaryTextColor
+                    )
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -103,50 +105,8 @@ struct StatusPopover: View {
         }
     }
 
-    @ViewBuilder
-    private var backendStatus: some View {
-        if controller.phase == .runningManaged || controller.phase == .runningExternal {
-            VStack(spacing: 10) {
-                HStack {
-                    Label("Claude Code", systemImage: "bubble.left.and.text.bubble.right")
-                        .font(.system(size: 13, weight: .semibold))
-                    Spacer()
-                    Text(controller.claudeAvailable ? "Available" : "Not found")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(controller.claudeAvailable ? .green : .orange)
-                }
-                HStack {
-                    Label("Codex", systemImage: "terminal")
-                        .font(.system(size: 13, weight: .semibold))
-                    Spacer()
-                    Text(codexLabel)
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(codexColor)
-                }
-            }
-        }
-    }
-
-    private var codexLabel: String {
-        guard let codex = controller.codex else { return "Checking" }
-        if !codex.available { return "Not found" }
-        if !codex.authenticated { return "Sign-in required" }
-        return codex.cliVersion.map { "Connected · \($0)" } ?? "Connected"
-    }
-
-    private var codexColor: Color {
-        guard let codex = controller.codex else { return .secondary }
-        return codex.available && codex.authenticated ? .green : .orange
-    }
-
     private var actions: some View {
         HStack(spacing: 10) {
-            Button("Open Dashboard") {
-                controller.openDashboard()
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(controller.phase != .runningManaged && controller.phase != .runningExternal)
-
             Spacer()
 
             if controller.canStop {
@@ -159,14 +119,14 @@ struct StatusPopover: View {
                     Task { await controller.start() }
                 }
                 .buttonStyle(.borderedProminent)
-            } else if controller.phase == .runningExternal {
-                Text("Managed externally")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
             }
         }
-        .font(.system(size: 12, weight: .medium))
+        .font(.system(size: 11, weight: .regular))
         .controlSize(.small)
+    }
+
+    private var hasServerAction: Bool {
+        controller.canStop || controller.canStart
     }
 
     private var footer: some View {
@@ -175,30 +135,24 @@ struct StatusPopover: View {
                 Task { await controller.refresh() }
             } label: {
                 Image(systemName: "arrow.clockwise")
-                    .font(.system(size: 15, weight: .medium))
+                    .font(.system(size: 14, weight: .regular))
             }
             .buttonStyle(.plain)
             .help("Refresh")
 
             Text(updatedLabel)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(.secondary)
+                .font(.system(size: 13, weight: .regular))
+                .foregroundStyle(secondaryTextColor)
 
             Spacer()
 
-            Menu {
-                Button("View Logs", action: controller.openLogs)
-                Button("Open Config Folder", action: controller.openConfig)
-                Divider()
-                Button("Quit AgentBridge") {
-                    Task { await controller.quit() }
-                }
-            } label: {
-                Image(systemName: "ellipsis.circle")
-                    .font(.system(size: 15, weight: .medium))
+            Button("Open Dashboard") {
+                controller.openDashboard()
             }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
+            .buttonStyle(.bordered)
+            .font(.system(size: 11, weight: .regular))
+            .controlSize(.small)
+            .disabled(controller.phase != .runningManaged && controller.phase != .runningExternal)
         }
     }
 
@@ -208,51 +162,85 @@ struct StatusPopover: View {
         return elapsed < 5 ? "Updated now" : "Updated \(Int(elapsed))s ago"
     }
 
-    @ViewBuilder
+    private var secondaryTextColor: Color {
+        Color(nsColor: .secondaryLabelColor)
+    }
+
     private var settingsButton: some View {
-        if #available(macOS 14.0, *) {
-            ModernSettingsButton()
-        } else {
+        Menu {
             Button {
-                let opened = NSApp.sendAction(
-                    Selector(("showSettingsWindow:")),
-                    to: nil,
-                    from: nil
-                )
-                if !opened {
-                    NSApp.sendAction(
-                        Selector(("showPreferencesWindow:")),
-                        to: nil,
-                        from: nil
-                    )
-                }
+                Task { await controller.refresh() }
             } label: {
-                settingsIcon
+                Label("Refresh", systemImage: "arrow.clockwise")
             }
-            .buttonStyle(.plain)
-            .help("Settings")
+
+            Divider()
+
+            if #available(macOS 14.0, *) {
+                SettingsLink {
+                    Label("Settings…", systemImage: "gearshape")
+                }
+            } else {
+                Button(action: openLegacySettings) {
+                    Label("Settings…", systemImage: "gearshape")
+                }
+            }
+
+            Divider()
+
+            Button(action: showAboutPanel) {
+                Label("About AgentBridge", systemImage: "info.circle")
+            }
+
+            Button(action: controller.openLogs) {
+                Label("View Logs", systemImage: "doc.text")
+            }
+
+            Button(action: controller.openConfig) {
+                Label("Open Config Folder", systemImage: "folder")
+            }
+
+            Divider()
+
+            Button {
+                Task { await controller.quit() }
+            } label: {
+                Label("Quit AgentBridge", systemImage: "power")
+            }
+            .keyboardShortcut("q", modifiers: .command)
+        } label: {
+            settingsIcon
         }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("AgentBridge menu")
     }
 
     private var settingsIcon: some View {
         Image(systemName: "gearshape")
-            .font(.system(size: 16, weight: .semibold))
+            .font(.system(size: 15, weight: .semibold))
             .frame(width: 24, height: 24)
     }
-}
 
-@available(macOS 14.0, *)
-private struct ModernSettingsButton: View {
-    @Environment(\.openSettings) private var openSettings
-
-    var body: some View {
-        Button(action: openSettings.callAsFunction) {
-            Image(systemName: "gearshape")
-                .font(.system(size: 16, weight: .semibold))
-                .frame(width: 24, height: 24)
+    private func openLegacySettings() {
+        let opened = NSApp.sendAction(
+            Selector(("showSettingsWindow:")),
+            to: nil,
+            from: nil
+        )
+        if !opened {
+            NSApp.sendAction(
+                Selector(("showPreferencesWindow:")),
+                to: nil,
+                from: nil
+            )
         }
-        .buttonStyle(.plain)
-        .help("Settings")
+    }
+
+    private func showAboutPanel() {
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.orderFrontStandardAboutPanel(nil)
     }
 }
 
@@ -264,7 +252,7 @@ private struct ActivityProgressBar: View {
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(.secondary.opacity(0.22))
+                    .fill(.secondary.opacity(0.18))
                 if value > 0 {
                     Capsule()
                         .fill(.blue)
