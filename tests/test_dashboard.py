@@ -82,6 +82,17 @@ class TestRequestLifecycle:
         state = DashboardState()
         state.request_errored("nonexistent", "boom")  # should not raise
 
+    def test_active_request_count_tracks_lifecycle(self):
+        state = DashboardState()
+        assert state.active_request_count() == 0
+
+        state.request_started("req-1", "opus")
+        state.request_started("req-2", "codex/gpt-5.6-sol")
+        assert state.active_request_count() == 2
+
+        state.request_completed("req-1")
+        assert state.active_request_count() == 1
+
 
 class TestMultipleActiveRequests:
     """Tests for concurrent request tracking."""

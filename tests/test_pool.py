@@ -52,6 +52,11 @@ class TestMakeOptions:
         opts = make_options("opus")
         assert opts.env["CLAUDE_CODE_BRIDGE"] == "1"
 
+    def test_make_options_uses_explicit_claude_binary(self, monkeypatch):
+        monkeypatch.setenv("CLAUDE_BIN", "/opt/homebrew/bin/claude")
+        opts = make_options("opus")
+        assert str(opts.cli_path) == "/opt/homebrew/bin/claude"
+
 class TestClientPoolInit:
     """Tests for ClientPool initialization."""
 

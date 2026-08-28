@@ -140,6 +140,10 @@ class DashboardState:
     def get_active_requests(self) -> list[dict]:
         return [r.to_dict() for r in self._active.values()]
 
+    def active_request_count(self) -> int:
+        """Return the number of requests currently tracked as in flight."""
+        return len(self._active)
+
     def subscribe(self, request_id: str) -> asyncio.Queue | None:
         req = self._active.get(request_id)
         if req is None:

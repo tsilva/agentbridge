@@ -80,8 +80,19 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  macos-test:
+    runs-on: macos-15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Test menu-bar app
+        run: swift test --package-path macos
+
   build:
-    needs: [changes, test, pii-scan]
+    needs: [changes, test, pii-scan, macos-test]
     if: needs.changes.outputs.should-publish == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -182,9 +193,102 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  macos-app:
+    needs: [build]
+    if: >-
+      needs.build.outputs.publish == 'true' &&
+      vars.MACOS_RELEASE_ENABLED == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            architecture: arm64
+          - runner: macos-15-intel
+            architecture: x86_64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      - name: Install Python 3.12
+        run: uv python install 3.12
+      - name: Import Developer ID certificate
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.APPLE_KEYCHAIN_PASSWORD }}
+        shell: bash
+        run: |
+          certificate_path="$RUNNER_TEMP/developer-id.p12"
+          keychain_path="$RUNNER_TEMP/agentbridge-signing.keychain-db"
+          echo "$APPLE_CERTIFICATE_BASE64" | base64 -D > "$certificate_path"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security import "$certificate_path" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -A \
+            -t cert \
+            -f pkcs12 \
+            -k "$keychain_path"
+          security list-keychain -d user -s "$keychain_path"
+          security set-key-partition-list \
+            -S apple-tool:,apple: \
+            -s \
+            -k "$KEYCHAIN_PASSWORD" \
+            "$keychain_path"
+          identity="$(security find-identity -v -p codesigning "$keychain_path" \
+            | sed -n 's/.*"\(Developer ID Application:.*\)"/\1/p' \
+            | head -1)"
+          test -n "$identity"
+          echo "CODE_SIGN_IDENTITY=$identity" >> "$GITHUB_ENV"
+      - name: Build signed application
+        run: scripts/build_macos_app.sh
+      - name: Verify embedded application
+        run: scripts/verify_macos_app.sh "build/macos/${{ matrix.architecture }}/AgentBridge.app"
+      - name: Notarize and staple disk image
+        env:
+          APPLE_ID: ${{ secrets.APPLE_NOTARY_APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_NOTARY_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        shell: bash
+        run: |
+          dmg="$(find "build/macos/${{ matrix.architecture }}" -maxdepth 1 -name '*.dmg' -print -quit)"
+          test -n "$dmg"
+          xcrun notarytool submit "$dmg" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+          xcrun stapler staple "$dmg"
+          xcrun stapler validate "$dmg"
+          shasum -a 256 "$dmg" > "$dmg.sha256"
+      - name: Store macOS artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: macos-app-${{ matrix.architecture }}-${{ github.sha }}
+          path: |
+            build/macos/${{ matrix.architecture }}/*.dmg
+            build/macos/${{ matrix.architecture }}/*.dmg.sha256
+          if-no-files-found: error
+          retention-days: 1
+
   release:
-    needs: [build, publish]
-    if: needs.build.outputs.publish == 'true'
+    needs: [build, publish, macos-app]
+    if: >-
+      always() &&
+      needs.build.outputs.publish == 'true' &&
+      needs.publish.result == 'success' &&
+      (needs.macos-app.result == 'success' || needs.macos-app.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -195,6 +299,13 @@ jobs:
         with:
           name: python-package-${{ github.sha }}
           path: dist/
+      - name: Download macOS artifacts
+        if: needs.macos-app.result == 'success'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: macos-app-*-${{ github.sha }}
+          path: dist/
+          merge-multiple: true
       - name: Create GitHub release
         run: gh release create "$TAG" --title "$TAG" --generate-notes dist/*
         env:
