@@ -150,7 +150,10 @@ hdiutil create \
     -ov \
     "${dmg_path}" >/dev/null
 
-shasum -a 256 "${dmg_path}" > "${dmg_path}.sha256"
+(
+    cd "$(dirname "${dmg_path}")"
+    shasum -a 256 "$(basename "${dmg_path}")" > "$(basename "${dmg_path}").sha256"
+)
 
 echo "Application: ${app_path}"
 echo "Disk image:  ${dmg_path}"

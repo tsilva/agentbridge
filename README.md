@@ -14,9 +14,14 @@ It supports streaming and non-streaming responses, image and PDF inputs where th
 
 ### macOS menu-bar app
 
-Build the app locally on macOS 13 or later. This requires
-[uv](https://docs.astral.sh/uv/) and the Xcode Command Line Tools, but it does
-not require an Apple Developer account:
+Download the DMG for your Mac architecture from the GitHub Release, drag
+`AgentBridge.app` to Applications, and open it. The app is ad-hoc signed rather
+than Apple-notarized, so on first launch macOS may require you to Control-click
+the app, choose **Open**, and confirm.
+
+You can also build the app locally on macOS 13 or later. This requires
+[uv](https://docs.astral.sh/uv/) and the Xcode Command Line Tools, but not an
+Apple Developer account:
 
 ```bash
 git clone https://github.com/tsilva/agentbridge.git
@@ -25,10 +30,10 @@ scripts/build_macos_app.sh
 open "build/macos/$(uname -m)/AgentBridge-"*.dmg
 ```
 
-Drag `AgentBridge.app` to Applications and open it. The menu-bar window shows
-live server health and activity, starts and stops the local server, opens the
-dashboard, and provides settings for the port, worker count, and launch at
-login. See [`macos/README.md`](macos/README.md) for development instructions.
+The menu-bar window shows live server health and activity, starts and stops the
+local server, opens the dashboard, and provides settings for the port, worker
+count, and launch at login. See [`macos/README.md`](macos/README.md) for
+development instructions.
 
 The app contains its own Python 3.12 runtime and AgentBridge dependencies. It
 does not bundle the Claude Code or Codex executables: installed provider tools
@@ -147,9 +152,11 @@ uv build                                              # build wheel and source d
 Releases use the `Release` GitHub Actions workflow and PyPI Trusted Publishing
 for the `agentbridge-cli` project. The publisher is scoped to owner `tsilva`,
 repository `agentbridge`, workflow `release.yml`, and environment `pypi`; no
-PyPI API token is required. GitHub Releases contain the Python distributions;
-the macOS app is tested in CI and built locally from source. Releases through
-`0.1.10` remain available under the previous `agentbridge-py` distribution name.
+PyPI API token is required. GitHub Releases contain the Python distributions
+plus ad-hoc-signed arm64 and x86_64 macOS DMGs and SHA-256 checksums. These DMGs
+are not Apple-notarized and require no Apple Developer credentials. Releases
+through `0.1.10` remain available under the previous `agentbridge-py`
+distribution name.
 
 ## Architecture
 

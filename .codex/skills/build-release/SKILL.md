@@ -9,8 +9,7 @@ Use the repository-owned GitHub Actions workflow and PyPI Trusted Publishing.
 Do not create a local tag or upload with local credentials: pushing a new
 `pyproject.toml` version to `main` triggers `.github/workflows/release.yml`,
 which tests, scans, builds, creates `v<version>`, creates the GitHub Release,
-publishes `agentbridge-cli`, and, when macOS publishing is enabled, attaches
-signed and notarized arm64 and x86_64 DMGs.
+publishes `agentbridge-cli`, and attaches ad-hoc-signed arm64 and x86_64 DMGs.
 
 Use the next unused patch version unless the user requests another valid,
 unused semantic version. Treat an untagged version absent from PyPI as pending.
@@ -29,12 +28,8 @@ git log --oneline HEAD..origin/main
 Stop on unrelated changes, unpublished commits, divergence, or another branch.
 Do not clean, pull, commit unrelated files, or switch branches.
 
-Require the repository variable `MACOS_RELEASE_ENABLED` to be `true` and verify
-that these Actions secrets are configured before a release expected to contain
-the macOS app: `APPLE_CERTIFICATE_BASE64`, `APPLE_CERTIFICATE_PASSWORD`,
-`APPLE_KEYCHAIN_PASSWORD`, `APPLE_NOTARY_APPLE_ID`, `APPLE_NOTARY_PASSWORD`, and
-`APPLE_TEAM_ID`. Secret names may be inspected with `gh secret list`; never read
-or print secret values.
+The macOS artifacts use an ad-hoc signature and are not notarized. They do not
+require Apple Developer credentials or repository secrets.
 
 2. Select the release version from the repository root:
 
@@ -59,8 +54,8 @@ The preflight requires macOS. It checks consistent project and lock metadata, an
 unused PyPI version and tag, clean patch formatting, a frozen lock, Python 3.12
 and 3.13 tests, Ruff, Swift tests, a self-contained app/DMG build for the current
 Mac architecture, app signature and embedded-runtime smoke tests, wheel and
-sdist audits, and a wheel installation smoke test. CI builds and notarizes both
-macOS architectures. Stop at the exact failed gate.
+sdist audits, and a wheel installation smoke test. CI builds both macOS
+architectures with ad-hoc signatures. Stop at the exact failed gate.
 
 4. Review and publish the release commit:
 
@@ -97,13 +92,20 @@ python3 .codex/skills/build-release/scripts/release_build.py wait-pypi --version
 gh release view v<version> --json url,tagName,assets
 ```
 
-When macOS publishing is enabled, require both
+Require both
 `AgentBridge-<version>-macos-arm64.dmg` and
 `AgentBridge-<version>-macos-x86_64.dmg` plus their `.sha256` files in the
 release assets. Do not report success until PyPI returns exact-version files and
 all required GitHub assets exist. If the workflow fails, inspect
 `gh run view <run-id> --log-failed` and report the failed gate before considering
 recovery.
+
+If an existing release is missing only its macOS assets, attach them without
+republishing Python distributions:
+
+```bash
+gh workflow run release.yml --ref main -f attach_macos=true
+```
 
 ## Final Response
 

@@ -38,6 +38,10 @@ require an Apple Developer account.
 
 Open the generated DMG and drag `AgentBridge.app` to Applications.
 
+GitHub Releases provide the same ad-hoc-signed DMG for arm64 and x86_64 Macs.
+They are not Apple-notarized, so macOS may require you to Control-click the app,
+choose **Open**, and confirm on first launch.
+
 Mutable data stays outside the application bundle:
 
 ```text
