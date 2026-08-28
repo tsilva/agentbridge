@@ -8,28 +8,28 @@ struct StatusPopover: View {
         VStack(alignment: .leading, spacing: 0) {
             header
             statusLine
-                .padding(.top, 10)
+                .padding(.top, 7)
 
             activity
-                .padding(.top, 30)
+                .padding(.top, 24)
 
             Divider()
-                .padding(.vertical, 22)
+                .padding(.vertical, 18)
 
             backendStatus
             actions
-                .padding(.top, 20)
+                .padding(.top, 16)
 
             Divider()
-                .padding(.top, 22)
+                .padding(.top, 18)
 
             footer
-                .padding(.top, 16)
+                .padding(.top, 14)
         }
-        .padding(.horizontal, 24)
-        .padding(.top, 20)
-        .padding(.bottom, 18)
-        .frame(width: 400)
+        .padding(.horizontal, 20)
+        .padding(.top, 18)
+        .padding(.bottom, 16)
+        .frame(width: 350)
         .background(.ultraThinMaterial)
         .task { controller.begin() }
     }
@@ -37,19 +37,19 @@ struct StatusPopover: View {
     private var header: some View {
         HStack {
             Text("AgentBridge")
-                .font(.system(size: 25, weight: .bold))
+                .font(.system(size: 18, weight: .bold))
             Spacer()
             settingsButton
         }
     }
 
     private var statusLine: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             Circle()
                 .fill(controller.phase.color)
-                .frame(width: 12, height: 12)
+                .frame(width: 8, height: 8)
             Text(statusSummary)
-                .font(.system(size: 16, weight: .medium))
+                .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
         }
@@ -63,13 +63,13 @@ struct StatusPopover: View {
     }
 
     private var activity: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
                 Text("Server activity")
-                    .font(.system(size: 19, weight: .bold))
+                    .font(.system(size: 15, weight: .bold))
                 Spacer()
                 Text(activityLabel)
-                    .font(.system(size: 18, weight: .bold))
+                    .font(.system(size: 14, weight: .bold))
             }
 
             ActivityProgressBar(
@@ -82,12 +82,12 @@ struct StatusPopover: View {
                 Spacer()
                 Text("\(controller.workerCount) worker\(controller.workerCount == 1 ? "" : "s")")
             }
-            .font(.system(size: 14, weight: .medium))
+            .font(.system(size: 12, weight: .medium))
             .foregroundStyle(.secondary)
 
             if let detail = controller.detail {
                 Text(detail)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(controller.phase == .conflict ? .red : .secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -106,21 +106,21 @@ struct StatusPopover: View {
     @ViewBuilder
     private var backendStatus: some View {
         if controller.phase == .runningManaged || controller.phase == .runningExternal {
-            VStack(spacing: 12) {
+            VStack(spacing: 10) {
                 HStack {
                     Label("Claude Code", systemImage: "bubble.left.and.text.bubble.right")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(size: 13, weight: .semibold))
                     Spacer()
                     Text(controller.claudeAvailable ? "Available" : "Not found")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(controller.claudeAvailable ? .green : .orange)
                 }
                 HStack {
                     Label("Codex", systemImage: "terminal")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(size: 13, weight: .semibold))
                     Spacer()
                     Text(codexLabel)
-                        .font(.system(size: 14, weight: .medium))
+                        .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(codexColor)
                 }
             }
@@ -161,10 +161,12 @@ struct StatusPopover: View {
                 .buttonStyle(.borderedProminent)
             } else if controller.phase == .runningExternal {
                 Text("Managed externally")
-                    .font(.caption)
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.secondary)
             }
         }
+        .font(.system(size: 12, weight: .medium))
+        .controlSize(.small)
     }
 
     private var footer: some View {
@@ -173,13 +175,13 @@ struct StatusPopover: View {
                 Task { await controller.refresh() }
             } label: {
                 Image(systemName: "arrow.clockwise")
-                    .font(.system(size: 17, weight: .medium))
+                    .font(.system(size: 15, weight: .medium))
             }
             .buttonStyle(.plain)
             .help("Refresh")
 
             Text(updatedLabel)
-                .font(.system(size: 15, weight: .medium))
+                .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(.secondary)
 
             Spacer()
@@ -193,7 +195,7 @@ struct StatusPopover: View {
                 }
             } label: {
                 Image(systemName: "ellipsis.circle")
-                    .font(.system(size: 17, weight: .medium))
+                    .font(.system(size: 15, weight: .medium))
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
@@ -234,8 +236,8 @@ struct StatusPopover: View {
 
     private var settingsIcon: some View {
         Image(systemName: "gearshape")
-            .font(.system(size: 20, weight: .semibold))
-            .frame(width: 30, height: 30)
+            .font(.system(size: 16, weight: .semibold))
+            .frame(width: 24, height: 24)
     }
 }
 
@@ -246,8 +248,8 @@ private struct ModernSettingsButton: View {
     var body: some View {
         Button(action: openSettings.callAsFunction) {
             Image(systemName: "gearshape")
-                .font(.system(size: 20, weight: .semibold))
-                .frame(width: 30, height: 30)
+                .font(.system(size: 16, weight: .semibold))
+                .frame(width: 24, height: 24)
         }
         .buttonStyle(.plain)
         .help("Settings")
@@ -275,7 +277,7 @@ private struct ActivityProgressBar: View {
                 }
             }
         }
-        .frame(height: 11)
+        .frame(height: 8)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Server activity")
         .accessibilityValue("\(Int(value)) of \(Int(total)) workers active")

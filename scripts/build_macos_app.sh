@@ -34,7 +34,18 @@ if [[ "${output_root}" != "${repository_root}"/build/macos/* ]]; then
     exit 1
 fi
 
-rm -rf "${output_root}"
+# Finder may recreate .DS_Store while this build folder is open. Treat that
+# metadata file as harmless, but fail if any real build output survives.
+rm -rf "${output_root}" 2>/dev/null || true
+if [[ -d "${output_root}" ]]; then
+    surviving_output="$(
+        find "${output_root}" -mindepth 1 -maxdepth 1 ! -name .DS_Store -print -quit
+    )"
+    if [[ -n "${surviving_output}" ]]; then
+        echo "Could not clear build output: ${surviving_output}" >&2
+        exit 1
+    fi
+fi
 mkdir -p "${contents_path}/MacOS" "${resources_path}"
 
 swift build \

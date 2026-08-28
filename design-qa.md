@@ -1,57 +1,53 @@
 # AgentBridge macOS status window design QA
 
-- Source visual truth: `/var/folders/wz/x29jb7_x5rdc_5dcjr4qnhg00000gn/T/codex-clipboard-6065429c-e8b8-40f4-a1be-c95c4734eb1c.png`
-- Implementation screenshot: `/Users/tsilva/repos/tsilva/agentbridge/design-qa-implementation.png`
-- Source dimensions: 722 × 478 pixels; density metadata unavailable
-- Implementation viewport and capture: 400 × 430 native logical pixels, running state
-- Density normalization: none. Both originals were opened in the same comparison input. Because the source was explicitly supplied as a style reference rather than a content/layout specification, spacing and control proportions were compared relative to each window width rather than forcing equal height or copy.
-- State: server running, zero active requests, three configured workers, Claude Code available, Codex connected
+- Source visual truth: `/var/folders/wz/x29jb7_x5rdc_5dcjr4qnhg00000gn/T/codex-clipboard-7d264239-152f-42e2-bddb-e728cf5fe09e.png`
+- Earlier implementation evidence: `/var/folders/wz/x29jb7_x5rdc_5dcjr4qnhg00000gn/T/codex-clipboard-74c41c50-e709-4cde-83b5-b9cd35a70a65.png`
+- Revised implementation screenshot: `/Users/tsilva/repos/tsilva/agentbridge/design-qa-implementation.png`
+- Source dimensions: 788 × 570 pixels; the 702 × 447 popover region was cropped and normalized to 350 × 223 pixels for the focused typography comparison.
+- Implementation viewport and capture: 350 × 366 native logical pixels at scale 1 in the debug NSWindow host.
+- State: external AgentBridge server running, zero active requests, one worker, Claude Code available, Codex connected.
 
 ## Full-view comparison evidence
 
-The implementation preserves the reference's compact macOS status-window language: dark translucent material, continuous rounded frame, bold title, top-right SF Symbol settings control, semantic status dot and secondary status copy, strong section heading/value pairing, thick rounded activity track, aligned metadata, fine dividers, and a refresh footer. The implementation replaces quota-specific content with live AgentBridge server and backend status, as requested.
+The revised implementation uses the same 350-point content width as the normalized reference. It preserves the reference hierarchy: compact bold title, small secondary connection line and status dot, 14–15 point section heading/value pairing, slim rounded activity track, 12–13 point metadata, fine dividers, and a restrained refresh footer. Its additional backend and lifecycle rows intentionally make the AgentBridge panel taller than the quota-only reference.
 
-The source uses San Francisco system typography and native macOS iconography. The implementation uses the same system font stack, semantic weights, and SF Symbols. Its 24-point horizontal padding is proportional to the reference's approximately 48 pixels at the supplied larger capture width. The 11-point activity track matches the reference after width normalization.
+The implementation screenshot is hosted in a debug NSWindow so Computer Use can capture it. Production uses the same `StatusPopover` view inside `MenuBarExtra(.window)`; the debug-only title-bar controls are absent from the menu-bar popover.
 
-The implementation screenshot is hosted in a debug NSWindow so Computer Use can capture and exercise it. Production uses the exact same `StatusPopover` view inside `MenuBarExtra(.window)`; the debug-only traffic-light controls are not present in the menu-bar popover.
+## Focused-region comparison evidence
 
-## Focused-region comparison
-
-A separate crop was not required. Both windows are compact, and the full-view evidence keeps typography, status indicators, activity track, dividers, buttons, icons, and footer legible at original resolution.
+The source popover was cropped and downsampled from 702 pixels to 350 pixels wide, then opened beside the 350-pixel implementation in the same comparison input. At equal width, the title cap height, connection line, section heading, metadata, gear, status dot, progress track, and footer now have the same compact optical scale. No remaining text is a full hierarchy step larger than its reference counterpart.
 
 ## Required fidelity surfaces
 
-- Fonts and typography: passed. System font, bold title/section hierarchy, medium secondary text, line lengths, and optical weights match the reference language.
-- Spacing and layout rhythm: passed. Header, status line, primary section, divider cadence, action area, and footer maintain the same compact vertical rhythm. Content height intentionally differs because AgentBridge has backend and lifecycle controls rather than quota copy.
-- Colors and visual tokens: passed. Semantic green, amber, red, gray, blue activity, secondary foregrounds, and material background respond to system appearance. Exact material tint varies with the desktop behind the popover, as it does in the source.
-- Image quality and assets: passed. No custom raster imagery is required in the status window. Standard controls use SF Symbols; the packaged application icon reuses the repository's source artwork.
-- Copy and content: passed. All visible copy is AgentBridge-specific, concise, state-aware, and does not leak instructions or placeholder content.
+- Fonts and typography: passed. Both use San Francisco system typography. Revised sizes are 18 pt title, 12 pt connection line, 14–15 pt activity heading/value, 12 pt metadata, 13 pt backend/footer copy, and 11–12 pt auxiliary controls.
+- Spacing and layout rhythm: passed. Width is 350 points with 20-point side padding; section gaps, dividers, and control sizing were tightened with the type scale. Extra height is expected from AgentBridge-specific backend and lifecycle controls.
+- Colors and visual tokens: passed. Native material, secondary foregrounds, semantic green, blue activity fill, and divider opacity match the source language. Material tint varies with the desktop behind the window.
+- Image quality and assets: passed. The panel requires no raster imagery; visible controls use native SF Symbols. The debug title-bar controls are capture-host infrastructure, not production content.
+- Copy and content: passed. Copy is live AgentBridge status rather than the quota-specific reference content, as intended.
 
 ## Comparison history
 
 ### Iteration 1
 
-- Earlier finding [P2]: the default SwiftUI linear progress indicator was visibly thinner than the reference.
-- Fix: replaced it with an accessible 11-point continuous activity track using native SwiftUI shapes and semantic blue fill.
-- Earlier finding [P1]: the gear control rendered correctly but did not open the SwiftUI Settings scene.
-- Fix: added a macOS 14+ `openSettings` adapter while retaining the macOS 13 selector fallback.
-- Post-fix evidence: `design-qa-implementation.png`; Computer Use also confirmed the Settings window opens and exposes port, worker, start-on-launch, and launch-at-login controls.
+- Earlier finding [P1]: the 25 pt title, 16 pt status line, 18–19 pt activity heading/value, 14–15 pt supporting copy, 20 pt gear, 11 pt track, and 400 pt panel made the entire interface visibly oversized beside the supplied reference.
+- Fix: reduced the panel to 350 points, reset the hierarchy to 11–18 point type, reduced the status dot and SF Symbols, changed buttons to small control sizing, slimmed the activity track to 8 points, and tightened padding and vertical gaps.
+- Post-fix evidence: `design-qa-implementation.png`, compared at the same 350-pixel width with `/tmp/agentbridge-reference-panel.png`.
 
 ### Final pass
 
-No actionable P0, P1, or P2 visual or interaction findings remain. Start, healthy, stop, stopped, restart, external-instance, and Settings states were exercised in the native app.
+No actionable P0, P1, or P2 typography, spacing, color, asset, copy, or interaction findings remain. Swift tests pass and the rebuilt `.app` and DMG contain the corrected shared production view.
 
 ## Follow-up polish
 
-- [P3] Material tint and outer corner appearance will vary slightly by macOS version, wallpaper, and light/dark appearance because production deliberately uses the native menu-bar window material.
+- [P3] Native material tint and outer corner rendering vary slightly by macOS version, wallpaper, and whether the view is hosted in the debug window or production menu-bar popover.
 
 ## Implementation checklist
 
-- [x] Native status hierarchy and material
-- [x] Live semantic server states
-- [x] Accessible activity indicator
-- [x] Functional Settings, Start, Stop, Restart, Refresh, Dashboard, and overflow actions
-- [x] External-process ownership safeguard
-- [x] Production view shared with the captured debug host
+- [x] Reference-width typography comparison
+- [x] Compact system type hierarchy
+- [x] Matching icon, dot, track, and control scale
+- [x] Tightened panel spacing
+- [x] Shared production and capture view
+- [x] Rebuilt app and DMG
 
 final result: passed
