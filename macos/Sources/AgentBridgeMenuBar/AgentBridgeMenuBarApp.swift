@@ -26,8 +26,9 @@ struct AgentBridgeMenuBarApp: App {
 final class AgentBridgeAppDelegate: NSObject, NSApplicationDelegate {
     private let controller = ServerController()
     private let popover = NSPopover()
+    private let statusPresenter = MenuBarStatusPresenter()
     private var statusItem: NSStatusItem?
-    private var phaseObservation: AnyCancellable?
+    private var statusObservation: AnyCancellable?
     #if DEBUG
     private var debugAnchorWindow: NSWindow?
     #endif
@@ -39,18 +40,26 @@ final class AgentBridgeAppDelegate: NSObject, NSApplicationDelegate {
         if let button = item.button {
             button.target = self
             button.action = #selector(togglePopover(_:))
+            statusPresenter.install(on: button)
+            statusPresenter.update(
+                button: button,
+                phase: controller.phase,
+                activeWorkers: controller.activeRequests
+            )
         }
-        updateStatusItem(for: controller.phase)
 
         let host = NSHostingController(rootView: StatusPopover(controller: controller))
         popover.contentViewController = host
         popover.behavior = .transient
         popover.animates = true
 
-        phaseObservation = controller.$phase
+        statusObservation = Publishers.CombineLatest(controller.$phase, controller.$health)
             .receive(on: RunLoop.main)
-            .sink { [weak self] phase in
-                self?.updateStatusItem(for: phase)
+            .sink { [weak self] phase, health in
+                self?.updateStatusItem(
+                    for: phase,
+                    activeWorkers: health?.activeRequests ?? 0
+                )
             }
 
         controller.begin()
@@ -84,17 +93,13 @@ final class AgentBridgeAppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func updateStatusItem(for phase: ServerPhase) {
+    private func updateStatusItem(for phase: ServerPhase, activeWorkers: Int) {
         guard let button = statusItem?.button else { return }
-        let label = "AgentBridge: \(phase.label)"
-        let image = NSImage(
-            systemSymbolName: phase.menuBarSymbol,
-            accessibilityDescription: label
+        statusPresenter.update(
+            button: button,
+            phase: phase,
+            activeWorkers: activeWorkers
         )
-        image?.isTemplate = true
-        button.image = image
-        button.toolTip = label
-        button.setAccessibilityLabel(label)
     }
 
     #if DEBUG
