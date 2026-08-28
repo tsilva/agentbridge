@@ -1,5 +1,5 @@
 {
-  "project_name": "agentbridge",
+  "project_name": "AgentBridge",
   "assets": [
     {
       "key": "logo-1024",
@@ -17,7 +17,7 @@
       "key": "root-logo",
       "path": "../logo.png",
       "width": 1024,
-      "height": 424
+      "height": 275
     },
     {
       "key": "favicon-16",
@@ -72,6 +72,12 @@
       "path": "web-seo/site.webmanifest",
       "width": 0,
       "height": 0
+    },
+    {
+      "key": "app-store-icon",
+      "path": "apple-store/app-store-icon-1024.png",
+      "width": 1024,
+      "height": 1024
     }
   ]
 }
