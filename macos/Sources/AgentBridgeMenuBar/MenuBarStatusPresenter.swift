@@ -23,26 +23,11 @@ final class MenuBarStatusPresenter {
     ) {
         let count = max(activeWorkers, 0)
         let label = Self.accessibilityLabel(for: phase, activeWorkers: count)
-        let baseImage = NSImage(
+        let image = NSImage(
             systemSymbolName: phase.menuBarSymbol,
             accessibilityDescription: label
         )
-        let appearance = button.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua])
-        let symbolDetailColor = appearance == .darkAqua
-            ? NSColor.black.withAlphaComponent(0.68)
-            : NSColor.white.withAlphaComponent(0.88)
-        let paletteColors: [NSColor]
-        switch phase {
-        case .runningManaged, .runningExternal, .conflict, .failed:
-            paletteColors = [symbolDetailColor, .labelColor]
-        case .starting, .stopping, .stopped:
-            paletteColors = [.labelColor]
-        }
-        let colorConfiguration = NSImage.SymbolConfiguration(
-            paletteColors: paletteColors
-        )
-        let image = baseImage?.withSymbolConfiguration(colorConfiguration) ?? baseImage
-        image?.isTemplate = false
+        image?.isTemplate = true
         button.image = image
         button.toolTip = label
         button.setAccessibilityLabel(label)
