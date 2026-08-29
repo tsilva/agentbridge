@@ -32,12 +32,11 @@ struct StatusPopover: View {
         .padding(.bottom, 16)
         .frame(width: 350)
         .fixedSize(horizontal: false, vertical: true)
-        .tint(AgentBridgeBrand.fir)
+        .tint(secondaryTextColor)
     }
 
     private var header: some View {
         HStack(spacing: 8) {
-            AgentBridgeBrandMark(size: 24)
             Text("AgentBridge")
                 .font(.system(size: 17, weight: .bold))
             Spacer()
