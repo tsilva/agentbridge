@@ -88,13 +88,32 @@ final class StatusModelsTests: XCTestCase {
     }
 
     @MainActor
+    func testMenuBarIconUsesAdaptiveTemplateRendering() {
+        let (_, button, presenter) = makeMenuBarFixture(activeWorkers: 0)
+
+        XCTAssertEqual(
+            button.image?.isTemplate,
+            true,
+            "Menu-bar icons must be templates so macOS can maintain contrast"
+        )
+
+        presenter.update(
+            button: button,
+            phase: .runningManaged,
+            activeWorkers: 48
+        )
+        XCTAssertEqual(button.image?.isTemplate, true)
+        XCTAssertFalse(presenter.badgeView.isHidden)
+    }
+
+    @MainActor
     func testMenuBarBadgeShowsActiveWorkerCount() throws {
         let (canvas, button, presenter) = makeMenuBarFixture(activeWorkers: 48)
 
         XCTAssertFalse(presenter.badgeView.isHidden)
         XCTAssertEqual(presenter.badgeView.displayedCount, 48)
         XCTAssertEqual(button.toolTip, "AgentBridge: Running, 48 active workers")
-        XCTAssertEqual(button.image?.isTemplate, false)
+        XCTAssertEqual(button.image?.isTemplate, true)
 
         try writeSnapshot(
             of: canvas,
