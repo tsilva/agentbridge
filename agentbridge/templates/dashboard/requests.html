@@ -5,9 +5,9 @@
 {% set completed_requests = requests|rejectattr("is_active")|rejectattr("error")|list %}
 
 {% macro request_row(req) -%}
-<div class="request-row{% if req.is_active %} request-row-active{% endif %}" data-request-id="{{ req.request_id }}" hx-get="/dashboard/request/{{ req.request_id }}" hx-target="#detail" hx-swap="innerHTML">
-    <div class="request-main">
-        <div class="request-title">
+<button class="request-row{% if req.is_active %} request-row-active{% endif %}" type="button" data-request-id="{{ req.request_id }}" hx-get="/dashboard/request/{{ req.request_id }}" hx-target="#detail" hx-swap="innerHTML">
+    <span class="request-main">
+        <span class="request-title">
             <span class="status-dot {% if req.is_active %}streaming{% elif req.error %}error{% else %}idle{% endif %}"></span>
             <span class="request-id">{{ req.request_id }}</span>
             {% if req.is_active %}
@@ -17,14 +17,14 @@
             {% else %}
             <span class="badge badge-ok">ok</span>
             {% endif %}
-        </div>
-        <div class="request-model">{{ req.model }}</div>
-    </div>
-    <div class="request-metrics">
-        <div>{% if req.is_active %}{{ req.elapsed_s }}s{% else %}{{ req.duration_ms }}ms{% endif %}</div>
-        <div>{% if not req.is_active and (req.input_tokens is not none or req.output_tokens is not none) %}{{ (req.input_tokens or 0) + (req.output_tokens or 0) }}t{% else %}-{% endif %}</div>
-    </div>
-</div>
+        </span>
+        <span class="request-model">{{ req.model }}</span>
+    </span>
+    <span class="request-metrics">
+        <span>{% if req.is_active %}{{ req.elapsed_s }}s{% else %}{{ req.duration_ms }}ms{% endif %}</span>
+        <span>{% if not req.is_active and (req.input_tokens is not none or req.output_tokens is not none) %}{{ (req.input_tokens or 0) + (req.output_tokens or 0) }}t{% else %}-{% endif %}</span>
+    </span>
+</button>
 {%- endmacro %}
 
 {% if active_requests %}
@@ -62,6 +62,7 @@
     {% endfor %}
 </section>
 {% endif %}
+<p class="filter-empty" hidden>No matching requests</p>
 {% else %}
 <p class="empty-state">No requests</p>
 {% endif %}

@@ -686,6 +686,23 @@ OPENROUTER_TIMEOUT = int(
 )
 
 
+def _stream_error_event(
+    message: str,
+    *,
+    error_type: str = "server_error",
+    code: str | None = None,
+) -> str:
+    """Return a machine-readable OpenAI-shaped error in an SSE data event."""
+    payload = ErrorResponse(
+        error=ErrorDetail(
+            message=message,
+            type=error_type,
+            code=code,
+        )
+    )
+    return f"data: {payload.model_dump_json()}\n\n"
+
+
 class BridgeHTTPException(HTTPException):
     """HTTPException with request_id for error tracing."""
 
@@ -1863,18 +1880,13 @@ async def stream_openrouter_api(
         )
         dashboard_state.request_errored(request_id, f"{type(e).__name__}: {error}")
         _dashboard_handled = True
-        error_chunk = ChatCompletionChunk(
-            id=request_id,
-            created=created,
-            model=request.model,
-            choices=[
-                StreamChoice(
-                    delta=DeltaMessage(content="\n\n[Error: OpenRouter request failed.]"),
-                    finish_reason=None,
-                )
-            ],
+        yield _stream_error_event(
+            "OpenRouter request timed out."
+            if isinstance(e, asyncio.TimeoutError)
+            else "OpenRouter request failed.",
+            error_type="timeout_error" if isinstance(e, asyncio.TimeoutError) else "server_error",
+            code="timeout_error" if isinstance(e, asyncio.TimeoutError) else "provider_error",
         )
-        yield f"data: {error_chunk.model_dump_json()}\n\n"
         yield "data: [DONE]\n\n"
     finally:
         if not _dashboard_handled:
@@ -2186,23 +2198,11 @@ async def stream_claude_sdk(
         )
         dashboard_state.request_errored(request_id, f"Timeout after {CLAUDE_TIMEOUT}s")
         _dashboard_handled = True
-        error_chunk = ChatCompletionChunk(
-            id=request_id,
-            created=created,
-            model=model,
-            choices=[
-                StreamChoice(
-                    delta=DeltaMessage(
-                        content=(
-                            "\n\n[Error: Request timed out. Increase CLAUDE_TIMEOUT "
-                            "env var for longer requests.]"
-                        )
-                    ),
-                    finish_reason=None,
-                )
-            ],
+        yield _stream_error_event(
+            "Request timed out. Increase CLAUDE_TIMEOUT env var for longer requests.",
+            error_type="timeout_error",
+            code="timeout_error",
         )
-        yield f"data: {error_chunk.model_dump_json()}\n\n"
         yield "data: [DONE]\n\n"
         return
     except HTTPException as he:
@@ -2213,16 +2213,11 @@ async def stream_claude_sdk(
         )
         dashboard_state.request_errored(request_id, f"HTTP {he.status_code}: {he.detail}")
         _dashboard_handled = True
-        error_chunk = ChatCompletionChunk(
-            id=request_id,
-            created=created,
-            model=model,
-            choices=[StreamChoice(
-                delta=DeltaMessage(content=f"\n\n[Error: {he.detail}]"),
-                finish_reason=None,
-            )],
+        yield _stream_error_event(
+            str(he.detail),
+            error_type="invalid_request_error" if he.status_code < 500 else "server_error",
+            code="invalid_request_error" if he.status_code < 500 else "server_error",
         )
-        yield f"data: {error_chunk.model_dump_json()}\n\n"
         yield "data: [DONE]\n\n"
         return
     except Exception as e:
@@ -2237,16 +2232,11 @@ async def stream_claude_sdk(
         )
         dashboard_state.request_errored(request_id, f"{type(e).__name__}: {e}")
         _dashboard_handled = True
-        error_chunk = ChatCompletionChunk(
-            id=request_id,
-            created=created,
-            model=model,
-            choices=[StreamChoice(
-                delta=DeltaMessage(content="\n\n[Error: An internal error occurred.]"),
-                finish_reason=None,
-            )],
+        yield _stream_error_event(
+            "An internal error occurred.",
+            error_type="server_error",
+            code="server_error",
         )
-        yield f"data: {error_chunk.model_dump_json()}\n\n"
         yield "data: [DONE]\n\n"
         return
     finally:
@@ -2482,23 +2472,11 @@ async def stream_codex_cli(
         )
         dashboard_state.request_errored(request_id, f"Timeout after {CODEX_TIMEOUT}s")
         _dashboard_handled = True
-        error_chunk = ChatCompletionChunk(
-            id=request_id,
-            created=created,
-            model=model,
-            choices=[
-                StreamChoice(
-                    delta=DeltaMessage(
-                        content=(
-                            "\n\n[Error: Request timed out. Increase CODEX_TIMEOUT "
-                            "env var for longer requests.]"
-                        )
-                    ),
-                    finish_reason=None,
-                )
-            ],
+        yield _stream_error_event(
+            "Request timed out. Increase CODEX_TIMEOUT env var for longer requests.",
+            error_type="timeout_error",
+            code="timeout_error",
         )
-        yield f"data: {error_chunk.model_dump_json()}\n\n"
         yield "data: [DONE]\n\n"
         return
     except Exception as e:
@@ -2514,16 +2492,11 @@ async def stream_codex_cli(
         )
         dashboard_state.request_errored(request_id, f"{type(e).__name__}: {e}")
         _dashboard_handled = True
-        error_chunk = ChatCompletionChunk(
-            id=request_id,
-            created=created,
-            model=model,
-            choices=[StreamChoice(
-                delta=DeltaMessage(content="\n\n[Error: An internal error occurred.]"),
-                finish_reason=None,
-            )],
+        yield _stream_error_event(
+            "An internal error occurred.",
+            error_type="server_error",
+            code="server_error",
         )
-        yield f"data: {error_chunk.model_dump_json()}\n\n"
         yield "data: [DONE]\n\n"
         return
     finally:
