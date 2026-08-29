@@ -21,6 +21,7 @@ from agentbridge.dashboard import (
     _get_recent_logs,
     _parse_log_file,
     create_dashboard_router,
+    templates,
 )
 
 # ---------------------------------------------------------------------------
@@ -381,6 +382,50 @@ class TestDashboardPage:
         assert resp.status_code == 200
         assert 'class="nav-item" href="/dashboard/chat">Chat</a>' in resp.text
 
+    def test_dashboard_interactions_have_accessible_semantics(self):
+        """Filter and request controls remain keyboard and screen-reader friendly."""
+        client = TestClient(_make_app())
+
+        page = client.get("/dashboard")
+        requests = templates.get_template("requests.html").render(
+            requests=[
+                {
+                    **SAMPLE_LOG,
+                    "is_active": False,
+                    "duration_ms": 1100,
+                    "input_tokens": 100,
+                    "output_tokens": 50,
+                }
+            ]
+        )
+
+        assert 'aria-label="Filter requests"' in page.text
+        assert '<button class="request-row' in requests
+        assert 'type="button"' in requests
+        assert 'class="filter-empty"' in requests
+        assert "No matching requests" in requests
+
+    def test_json_highlighter_uses_one_pass_over_plain_json(self):
+        """Generated highlighting markup must never be processed as JSON again."""
+        page = TestClient(_make_app()).get("/dashboard")
+
+        assert "var jsonTokenPattern =" in page.text
+        assert "return pretty.replace(jsonTokenPattern" in page.text
+        assert ").replace(/\"(?:\\\\.|[^\"\\\\])*\"/g" not in page.text
+
+    def test_back_navigation_restores_default_request(self):
+        """Returning to the base dashboard must not leave stale request detail."""
+        page = TestClient(_make_app()).get("/dashboard")
+
+        assert "function loadDefaultRequest()" in page.text
+        assert "else {\n                    loadDefaultRequest();\n                }" in page.text
+        assert "markSelected(findRequestRow(selectedId), { scroll: false });" in page.text
+        assert (
+            "markSelected(findRequestRow(selectedId), { scroll: false });\n"
+            "                    } else {\n"
+            "                        loadDefaultRequest();"
+        ) in page.text
+
     def test_serves_packaged_brand_assets(self):
         """Dashboard chrome assets are available from the installed package."""
         app = _make_app()
@@ -466,6 +511,35 @@ class TestDashboardChatPage:
         )
         assert "Copy cURL" not in resp.text
         assert 'id="stream"' not in resp.text
+
+    def test_hidden_file_picker_is_not_a_duplicate_tab_stop(self):
+        """Only the visible attach button should be keyboard focusable."""
+        resp = TestClient(_make_app()).get("/dashboard/chat")
+
+        assert (
+            '<input id="file-input" class="hidden-input" type="file" '
+            'tabindex="-1" aria-hidden="true"'
+        ) in resp.text
+
+    def test_composer_exposes_only_available_and_named_actions(self):
+        """Composer actions communicate whether they can run and what they remove."""
+        resp = TestClient(_make_app()).get("/dashboard/chat")
+
+        assert 'id="send" class="primary" type="button" disabled' in resp.text
+        assert "function updateSendAvailability()" in resp.text
+        assert 'remove.setAttribute("aria-label", "Remove " + fileName)' in resp.text
+
+    def test_retry_replays_the_prepared_request(self):
+        """Retry must retain the failed payload after the composer is cleared."""
+        resp = TestClient(_make_app()).get("/dashboard/chat")
+
+        assert "function appendError(status, statusText, body, requestId, retryAction)" in resp.text
+        assert "async function submitPreparedMessage(payload, userMessage, userTarget)" in resp.text
+        assert 'retry.addEventListener("click", sendMessage)' not in resp.text
+        assert "if (chunk.error)" in resp.text
+        assert 'error.type = "stream_error"' in resp.text
+        assert 'if (e.type === "stream_error") throw e;' in resp.text
+        assert "var summary = status ? String(status)" in resp.text
 
 
 class TestDashboardPool:

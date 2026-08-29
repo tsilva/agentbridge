@@ -642,14 +642,14 @@
                         </svg>
                     </button>
                     <textarea id="prompt" placeholder="Send a test message..." rows="1"></textarea>
-                    <button id="send" class="primary" type="button" aria-label="Send message" title="Send message">
+                    <button id="send" class="primary" type="button" disabled aria-label="Send message" title="Send message">
                         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                             <path d="m5 12 7-7 7 7"></path>
                             <path d="M12 19V5"></path>
                         </svg>
                     </button>
                 </div>
-                <input id="file-input" class="hidden-input" type="file" multiple accept="image/*,application/pdf,text/plain,.txt">
+                <input id="file-input" class="hidden-input" type="file" tabindex="-1" aria-hidden="true" multiple accept="image/*,application/pdf,text/plain,.txt">
             </section>
         </main>
 {% endblock %}
@@ -670,6 +670,7 @@
             var attachedFiles = [];
             var conversationMessages = [];
             var renderedMessages = [];
+            var isSending = false;
             var chatStateKey = "agentbridge.chat.state.v1";
 
             function endpoint(path) {
@@ -688,6 +689,10 @@
                 var nextHeight = Math.min(promptEl.scrollHeight, maxHeight);
                 promptEl.style.height = nextHeight + "px";
                 promptEl.style.overflowY = promptEl.scrollHeight > maxHeight ? "auto" : "hidden";
+            }
+
+            function updateSendAvailability() {
+                sendEl.disabled = isSending || (!promptEl.value.trim() && !attachedFiles.length);
             }
 
             function clearEmptyState() {
@@ -1032,7 +1037,7 @@
             function summarizeError(status, statusText, body, requestId) {
                 var err = body && body.error ? body.error : null;
                 var title = "Server error";
-                var summary = status + (statusText ? " " + statusText : "");
+                var summary = status ? String(status) + (statusText ? " " + statusText : "") : (statusText || "Request failed");
                 if (err && err.message) summary = summary + ": " + err.message;
                 return {
                     title: title,
@@ -1046,7 +1051,7 @@
                 };
             }
 
-            function appendError(status, statusText, body, requestId) {
+            function appendError(status, statusText, body, requestId, retryAction) {
                 clearEmptyState();
                 var info = summarizeError(status, statusText, body, requestId);
                 var article = document.createElement("article");
@@ -1073,12 +1078,6 @@
                 var actions = document.createElement("div");
                 actions.className = "error-actions";
 
-                var retry = document.createElement("button");
-                retry.className = "secondary";
-                retry.type = "button";
-                retry.textContent = "Retry";
-                retry.addEventListener("click", sendMessage);
-
                 var copy = document.createElement("button");
                 copy.className = "secondary";
                 copy.type = "button";
@@ -1087,7 +1086,17 @@
                     navigator.clipboard.writeText(compactJson(info.details));
                 });
 
-                actions.appendChild(retry);
+                if (retryAction) {
+                    var retry = document.createElement("button");
+                    retry.className = "secondary";
+                    retry.type = "button";
+                    retry.textContent = "Retry";
+                    retry.addEventListener("click", function() {
+                        article.remove();
+                        retryAction();
+                    });
+                    actions.appendChild(retry);
+                }
                 actions.appendChild(copy);
 
                 article.appendChild(title);
@@ -1111,8 +1120,9 @@
                     var remove = document.createElement("button");
                     remove.className = "remove-file";
                     remove.type = "button";
-                    remove.textContent = "x";
+                    remove.textContent = "×";
                     remove.title = "Remove file";
+                    remove.setAttribute("aria-label", "Remove " + fileName);
                     remove.addEventListener("click", function() {
                         attachedFiles.splice(index, 1);
                         renderAttachedFiles();
@@ -1127,6 +1137,7 @@
                 attachedFiles.forEach(function(file, index) {
                     attachedFilesEl.appendChild(filePill(file.name, true, index));
                 });
+                updateSendAvailability();
             }
 
             function isTextFile(file) {
@@ -1237,12 +1248,19 @@
                         if (data === "[DONE]") return;
                         try {
                             var chunk = JSON.parse(data);
+                            if (chunk.error) {
+                                var error = new Error(chunk.error.message || "Streaming request failed");
+                                error.type = "stream_error";
+                                error.details = chunk;
+                                throw error;
+                            }
                             var choice = chunk.choices && chunk.choices[0];
                             var delta = choice && choice.delta && choice.delta.content;
                             if (delta) {
                                 appendAssistantDelta(target, delta);
                             }
                         } catch (e) {
+                            if (e.type === "stream_error") throw e;
                             appendAssistantDelta(target, data);
                         }
                     });
@@ -1251,31 +1269,13 @@
                 return target.dataset.rawMarkdown || "";
             }
 
-            async function sendMessage() {
-                var text = promptEl.value.trim();
-                if (!text && !attachedFiles.length) return;
-                var assistantTarget = null;
-
-                sendEl.disabled = true;
+            async function submitPreparedMessage(payload, userMessage, userTarget) {
+                isSending = true;
+                updateSendAvailability();
                 setStatus(null, "Sending");
+                var assistantTarget = appendMessage("assistant", "", null, { model: payload.model, loading: true });
 
                 try {
-                    var content = await buildUserContent(text);
-                    var filesForMessage = attachedFiles.slice();
-                    var userMessage = { role: "user", content: content };
-                    var payload = {
-                        model: modelEl.value,
-                        messages: conversationMessages.concat([userMessage]),
-                        stream: true
-                    };
-
-                    var userTarget = appendMessage("user", displayTextForMessage(text, filesForMessage), filesForMessage);
-                    assistantTarget = appendMessage("assistant", "", null, { model: payload.model, loading: true });
-                    promptEl.value = "";
-                    autosizePrompt();
-                    attachedFiles = [];
-                    renderAttachedFiles();
-
                     var response = await fetch(endpoint("/chat/completions"), {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -1287,7 +1287,13 @@
 
                     if (!response.ok) {
                         removeMessageBody(assistantTarget);
-                        appendError(response.status, response.statusText, await parseResponseBody(response), requestId);
+                        appendError(
+                            response.status,
+                            response.statusText,
+                            await parseResponseBody(response),
+                            requestId,
+                            function() { submitPreparedMessage(payload, userMessage, userTarget); }
+                        );
                         return;
                     }
 
@@ -1299,15 +1305,54 @@
                     saveChatState();
                 } catch (error) {
                     removeMessageBody(assistantTarget);
-                    appendError(0, "Request failed", {
+                    appendError(0, error.type === "stream_error" ? "Stream failed" : "Request failed", error.details || {
                         error: {
                             message: error && error.message ? error.message : String(error),
                             type: "network_error",
                             code: "request_failed"
                         }
-                    }, null);
+                    }, null, function() { submitPreparedMessage(payload, userMessage, userTarget); });
                 } finally {
-                    sendEl.disabled = false;
+                    isSending = false;
+                    updateSendAvailability();
+                }
+            }
+
+            async function sendMessage() {
+                var text = promptEl.value.trim();
+                if (!text && !attachedFiles.length) return;
+
+                isSending = true;
+                updateSendAvailability();
+                setStatus(null, "Sending");
+
+                try {
+                    var content = await buildUserContent(text);
+                    var filesForMessage = attachedFiles.slice();
+                    var userMessage = { role: "user", content: content };
+                    var payload = {
+                        model: modelEl.value,
+                        messages: conversationMessages.concat([userMessage]),
+                        stream: true
+                    };
+                    var userTarget = appendMessage("user", displayTextForMessage(text, filesForMessage), filesForMessage);
+
+                    promptEl.value = "";
+                    autosizePrompt();
+                    attachedFiles = [];
+                    renderAttachedFiles();
+
+                    await submitPreparedMessage(payload, userMessage, userTarget);
+                } catch (error) {
+                    appendError(0, "Request failed", {
+                        error: {
+                            message: error && error.message ? error.message : String(error),
+                            type: "request_preparation_error",
+                            code: "request_preparation_failed"
+                        }
+                    }, null, sendMessage);
+                    isSending = false;
+                    updateSendAvailability();
                 }
             }
 
@@ -1329,7 +1374,10 @@
             });
             sendEl.addEventListener("click", sendMessage);
             modelEl.addEventListener("change", saveChatState);
-            promptEl.addEventListener("input", autosizePrompt);
+            promptEl.addEventListener("input", function() {
+                autosizePrompt();
+                updateSendAvailability();
+            });
             promptEl.addEventListener("keydown", function(e) {
                 if (e.key !== "Enter" || e.isComposing) return;
                 if (e.altKey) return;
@@ -1356,6 +1404,7 @@
             restoreChatState();
             checkHealth();
             autosizePrompt();
+            updateSendAvailability();
         })();
     </script>
 {% endblock %}

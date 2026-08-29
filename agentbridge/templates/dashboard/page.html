@@ -149,6 +149,7 @@
         }
 
         .request-row {
+            appearance: none;
             width: 100%;
             min-height: 62px;
             display: grid;
@@ -159,13 +160,21 @@
             border: 1px solid transparent;
             border-left: 3px solid transparent;
             border-radius: 7px;
+            background: transparent;
             color: var(--text);
             cursor: pointer;
+            font: inherit;
+            text-align: left;
             transition: background 0.12s ease, border-color 0.12s ease;
         }
 
         .request-row:hover {
             background: var(--surface-muted);
+        }
+
+        .request-row:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 1px;
         }
 
         .request-row.active,
@@ -177,6 +186,7 @@
 
         .request-main {
             min-width: 0;
+            display: block;
         }
 
         .request-title {
@@ -197,6 +207,7 @@
         }
 
         .request-model {
+            display: block;
             margin-top: 4px;
             color: var(--muted);
             font-size: 12px;
@@ -206,6 +217,7 @@
         }
 
         .request-metrics {
+            display: block;
             color: var(--muted);
             font-family: var(--mono);
             font-size: 12px;
@@ -548,6 +560,13 @@
             font-size: 13px;
         }
 
+        .filter-empty {
+            margin: 18px 2px;
+            color: var(--muted);
+            font-size: 13px;
+            text-align: center;
+        }
+
         .json-key { color: var(--blue); }
         .json-string { color: var(--accent-strong); }
         .json-number { color: var(--warn); }
@@ -711,7 +730,7 @@
                             <circle cx="11" cy="11" r="8"></circle>
                             <path d="m21 21-4.3-4.3"></path>
                         </svg>
-                        <input type="text" id="request-filter" placeholder="Filter requests..." autocomplete="off">
+                        <input type="text" id="request-filter" aria-label="Filter requests" placeholder="Filter requests..." autocomplete="off">
                         <span class="kbd">&#8984;K</span>
                     </label>
                 </div>
@@ -746,9 +765,21 @@
 
             function applyFilter() {
                 var term = filterEl.value.toLowerCase();
+                var visibleCount = 0;
                 listEl.querySelectorAll('.request-row').forEach(function(r) {
-                    r.style.display = (!term || r.textContent.toLowerCase().indexOf(term) !== -1) ? '' : 'none';
+                    var visible = !term || r.textContent.toLowerCase().indexOf(term) !== -1;
+                    r.style.display = visible ? '' : 'none';
+                    if (visible) visibleCount += 1;
                 });
+                listEl.querySelectorAll('.request-group').forEach(function(group) {
+                    var hasVisibleRow = Array.prototype.some.call(
+                        group.querySelectorAll('.request-row'),
+                        function(row) { return row.style.display !== 'none'; }
+                    );
+                    group.style.display = hasVisibleRow ? '' : 'none';
+                });
+                var emptyEl = listEl.querySelector('.filter-empty');
+                if (emptyEl) emptyEl.hidden = !term || visibleCount > 0;
             }
 
             filterEl.addEventListener('input', applyFilter);
@@ -790,6 +821,19 @@
                 }
             }
 
+            function loadDefaultRequest() {
+                var firstRow = listEl.querySelector('.request-row');
+                if (!firstRow) {
+                    selectedId = null;
+                    detailLoadedId = null;
+                    document.getElementById('detail').innerHTML = '<div class="detail-empty"><div><h3>Request Detail</h3><p class="empty-state">No requests</p></div></div>';
+                    return;
+                }
+                selectedId = firstRow.getAttribute('data-request-id');
+                detailLoadedId = null;
+                loadSelectedDetail({ scroll: false });
+            }
+
             function updateSelectedUrl() {
                 if (!selectedId || !window.history || !window.history.pushState) return;
                 var nextUrl = '/dashboard?request_id=' + encodeURIComponent(selectedId);
@@ -812,6 +856,8 @@
                 detailLoadedId = null;
                 if (selectedId) {
                     loadSelectedDetail({ scroll: true });
+                } else {
+                    loadDefaultRequest();
                 }
             });
 
@@ -825,6 +871,11 @@
                 if (!listEl.contains(e.target)) return;
                 requestAnimationFrame(function() {
                     applyFilter();
+                    if (selectedId) {
+                        markSelected(findRequestRow(selectedId), { scroll: false });
+                    } else {
+                        loadDefaultRequest();
+                    }
                 });
             });
 
@@ -832,15 +883,7 @@
                 if (e.detail.target && e.detail.target.id === 'request-list' && selectedId) {
                     loadSelectedDetail({ scroll: true });
                 } else if (e.detail.target && e.detail.target.id === 'request-list' && !selectedId) {
-                    var firstRow = listEl.querySelector('.request-row');
-                    if (firstRow) {
-                        setTimeout(function() {
-                            markSelected(firstRow);
-                            if (window.htmx) {
-                                window.htmx.ajax('GET', '/dashboard/request/' + selectedId, '#detail');
-                            }
-                        }, 20);
-                    }
+                    setTimeout(loadDefaultRequest, 20);
                 }
             });
 
@@ -860,14 +903,27 @@
                     var obj = JSON.parse(jsonStr);
                     var pretty = JSON.stringify(obj, null, 2);
                 } catch (e) { return null; }
-                return pretty.replace(/("(?:\\.|[^"\\])*")\s*:/g, function(m, key) {
-                    return '<span class="json-key">' + escapeHtml(key) + '</span><span class="json-colon">:</span>';
-                }).replace(/"(?:\\.|[^"\\])*"/g, function(m) {
-                    return '<span class="json-string">' + escapeHtml(m) + '</span>';
-                }).replace(/\b(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\b/g, '<span class="json-number">$1</span>')
-                  .replace(/\b(true|false)\b/g, '<span class="json-bool">$1</span>')
-                  .replace(/\bnull\b/g, '<span class="json-null">null</span>')
-                  .replace(/([{}\[\]])/g, '<span class="json-brace">$1</span>');
+                var jsonTokenPattern = /("(?:\\.|[^"\\])*")(\s*:)?|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)|\b(true|false)\b|\b(null)\b|([{}\[\]])/g;
+                return pretty.replace(jsonTokenPattern, function(
+                    match,
+                    stringToken,
+                    colonToken,
+                    numberToken,
+                    boolToken,
+                    nullToken,
+                    braceToken
+                ) {
+                    if (stringToken !== undefined) {
+                        var stringClass = colonToken ? 'json-key' : 'json-string';
+                        var highlightedString = '<span class="' + stringClass + '">' + escapeHtml(stringToken) + '</span>';
+                        return colonToken ? highlightedString + '<span class="json-colon">:</span>' : highlightedString;
+                    }
+                    if (numberToken !== undefined) return '<span class="json-number">' + numberToken + '</span>';
+                    if (boolToken !== undefined) return '<span class="json-bool">' + boolToken + '</span>';
+                    if (nullToken !== undefined) return '<span class="json-null">null</span>';
+                    if (braceToken !== undefined) return '<span class="json-brace">' + braceToken + '</span>';
+                    return match;
+                });
             }
 
             function processPreElement(pre) {

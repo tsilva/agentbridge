@@ -45,6 +45,7 @@ from agentbridge.server import (
     _print_banner,
     _read_codex_generated_image,
     _resolve_codex_reasoning_effort,
+    _stream_error_event,
     _usage_from_openrouter,
     _watch_parent_process,
     app,
@@ -56,6 +57,26 @@ from agentbridge.server import (
     main,
     parse_tool_response,
 )
+
+
+def test_stream_error_event_uses_openai_error_shape():
+    """Streaming failures are machine-readable instead of assistant text."""
+    event = _stream_error_event(
+        "Provider request failed.",
+        error_type="server_error",
+        code="provider_error",
+    )
+
+    assert event.startswith("data: ")
+    payload = json.loads(event.removeprefix("data: ").strip())
+    assert payload == {
+        "error": {
+            "message": "Provider request failed.",
+            "type": "server_error",
+            "param": None,
+            "code": "provider_error",
+        }
+    }
 
 
 def _png_bytes() -> bytes:
