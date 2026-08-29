@@ -352,6 +352,35 @@ class TestGetRecentLogs:
         result = _get_recent_logs(limit=2)
         assert len(result) == 2
 
+    def test_invalid_recent_files_do_not_consume_the_result_limit(
+        self, tmp_path, monkeypatch
+    ):
+        """Corrupt or non-session JSON files must not hide older valid sessions."""
+        monkeypatch.setenv("LOG_DIR", str(tmp_path))
+        for index in range(2):
+            path = tmp_path / f"chatcmpl-{index:08x}.json"
+            path.write_text(json.dumps({**SAMPLE_LOG, "request_id": path.stem}))
+            os.utime(path, (100 + index, 100 + index))
+        for index in range(3):
+            path = tmp_path / f"invalid-{index}.json"
+            path.write_text("not json")
+            os.utime(path, (200 + index, 200 + index))
+
+        result = _get_recent_logs(limit=2)
+
+        assert len(result) == 2
+        assert {item["request_id"] for item in result} == {
+            "chatcmpl-00000000",
+            "chatcmpl-00000001",
+        }
+
+    def test_zero_limit_returns_no_logs(self, tmp_path, monkeypatch):
+        """A zero result limit must remain empty."""
+        monkeypatch.setenv("LOG_DIR", str(tmp_path))
+        (tmp_path / "chatcmpl-00000000.json").write_text(json.dumps(SAMPLE_LOG))
+
+        assert _get_recent_logs(limit=0) == []
+
 
 class TestDashboardPage:
     """Tests for GET /dashboard."""
@@ -533,13 +562,26 @@ class TestDashboardChatPage:
         """Retry must retain the failed payload after the composer is cleared."""
         resp = TestClient(_make_app()).get("/dashboard/chat")
 
-        assert "function appendError(status, statusText, body, requestId, retryAction)" in resp.text
+        assert (
+            "function appendError(status, statusText, body, requestId, retryAction, options)"
+            in resp.text
+        )
         assert "async function submitPreparedMessage(payload, userMessage, userTarget)" in resp.text
         assert 'retry.addEventListener("click", sendMessage)' not in resp.text
         assert "if (chunk.error)" in resp.text
         assert 'error.type = "stream_error"' in resp.text
         assert 'if (e.type === "stream_error") throw e;' in resp.text
         assert "var summary = status ? String(status)" in resp.text
+
+    def test_discarded_assistant_is_removed_from_persisted_chat_state(self):
+        """A failed loading message must not return as a blank message on reload."""
+        resp = TestClient(_make_app()).get("/dashboard/chat")
+
+        assert "function removeRenderedMessage(article)" in resp.text
+        assert "renderedMessages.splice(index, 1);" in resp.text
+        assert "removeRenderedMessage(article);" in resp.text
+        assert 'role: "error"' in resp.text
+        assert 'if (message.role === "error")' in resp.text
 
 
 class TestDashboardPool:
@@ -707,6 +749,24 @@ class TestDashboardRequestDetail:
         client = TestClient(app)
         resp = client.get("/dashboard/request/chatcmpl-deadbeef")
         assert resp.status_code == 404
+
+    def test_null_timing_and_usage_render_as_missing_metadata(
+        self, tmp_path, monkeypatch
+    ):
+        """Partially written logs must not crash the request detail route."""
+        monkeypatch.setenv("LOG_DIR", str(tmp_path))
+        log = {
+            **SAMPLE_LOG,
+            "request_id": "chatcmpl-0badcafe",
+            "timing": None,
+            "usage": None,
+        }
+        (tmp_path / "chatcmpl-0badcafe.json").write_text(json.dumps(log))
+
+        resp = TestClient(_make_app()).get("/dashboard/request/chatcmpl-0badcafe")
+
+        assert resp.status_code == 200
+        assert "chatcmpl-0badcafe" in resp.text
 
 
 class TestDashboardStream:
