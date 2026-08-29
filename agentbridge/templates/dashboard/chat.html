@@ -844,9 +844,26 @@
                 target.innerHTML = '<span class="typing-indicator" aria-hidden="true"><span></span><span></span><span></span></span>';
             }
 
+            function removeRenderedMessage(article) {
+                if (!article) return;
+                if (article.dataset.chatIndex === undefined) {
+                    article.remove();
+                    return;
+                }
+                var index = Number(article.dataset.chatIndex);
+                if (Number.isInteger(index) && index >= 0 && index < renderedMessages.length) {
+                    renderedMessages.splice(index, 1);
+                }
+                article.remove();
+                messagesEl.querySelectorAll(".message[data-chat-index]").forEach(function(message, nextIndex) {
+                    message.dataset.chatIndex = String(nextIndex);
+                });
+                saveChatState();
+            }
+
             function removeMessageBody(target) {
                 var article = target && target.closest ? target.closest(".message") : null;
-                if (article) article.remove();
+                removeRenderedMessage(article);
             }
 
             function messageFileNames(files) {
@@ -998,6 +1015,25 @@
                         if (hasSavedModel) modelEl.value = state.model;
                     }
                     state.renderedMessages.forEach(function(message) {
+                        if (message.role === "error") {
+                            var errorArticle = appendError(
+                                message.status || 0,
+                                message.statusText || "Request failed",
+                                message.body || null,
+                                message.requestId || null,
+                                null,
+                                { persist: false }
+                            );
+                            renderedMessages.push({
+                                role: "error",
+                                status: message.status || 0,
+                                statusText: message.statusText || "Request failed",
+                                body: message.body || null,
+                                requestId: message.requestId || null
+                            });
+                            errorArticle.dataset.chatIndex = String(renderedMessages.length - 1);
+                            return;
+                        }
                         var body = appendMessage(
                             message.role,
                             message.text || "",
@@ -1051,7 +1087,8 @@
                 };
             }
 
-            function appendError(status, statusText, body, requestId, retryAction) {
+            function appendError(status, statusText, body, requestId, retryAction, options) {
+                options = options || {};
                 clearEmptyState();
                 var info = summarizeError(status, statusText, body, requestId);
                 var article = document.createElement("article");
@@ -1092,7 +1129,7 @@
                     retry.type = "button";
                     retry.textContent = "Retry";
                     retry.addEventListener("click", function() {
-                        article.remove();
+                        removeRenderedMessage(article);
                         retryAction();
                     });
                     actions.appendChild(retry);
@@ -1103,9 +1140,21 @@
                 article.appendChild(summary);
                 article.appendChild(details);
                 article.appendChild(actions);
+                if (options.persist !== false) {
+                    article.dataset.chatIndex = String(renderedMessages.length);
+                    renderedMessages.push({
+                        role: "error",
+                        status: status,
+                        statusText: statusText || null,
+                        body: body || null,
+                        requestId: requestId || null
+                    });
+                }
                 messagesEl.appendChild(article);
                 messagesEl.scrollTop = messagesEl.scrollHeight;
                 setStatus("error", "Error");
+                if (options.persist !== false) saveChatState();
+                return article;
             }
 
             function filePill(fileName, removable, index) {

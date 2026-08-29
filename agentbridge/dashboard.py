@@ -225,6 +225,8 @@ def _parse_log_file(path: Path) -> dict | None:
 
 def _get_recent_logs(limit: int = 20) -> list[dict]:
     """Read recent session log files, newest first."""
+    if limit <= 0:
+        return []
     log_dir = session_log_dir()
     if not log_dir.exists():
         return []
@@ -242,10 +244,12 @@ def _get_recent_logs(limit: int = 20) -> list[dict]:
     )
 
     results = []
-    for path in log_files[:limit]:
+    for path in log_files:
         parsed = _parse_log_file(path)
         if parsed is not None:
             results.append(parsed)
+            if len(results) >= limit:
+                break
 
     return results
 
@@ -366,10 +370,11 @@ def create_dashboard_router(
             if log.get("duration_ms") is None:
                 log["duration_ms"] = timing.get("duration_ms", 0)
             if log.get("input_tokens") is None:
-                usage_data = log.get("usage")
-                if usage_data:
-                    log["input_tokens"] = usage_data.get("input_tokens")
-                    log["output_tokens"] = usage_data.get("output_tokens")
+                usage_data = (
+                    log.get("usage") if isinstance(log.get("usage"), dict) else {}
+                )
+                log["input_tokens"] = usage_data.get("input_tokens")
+                log["output_tokens"] = usage_data.get("output_tokens")
 
         merged = active + completed
         return merged[:limit]
@@ -441,8 +446,8 @@ def create_dashboard_router(
         if parsed is None:
             raise HTTPException(status_code=404, detail="Request not found")
 
-        timing = parsed.get("timing", {})
-        usage = parsed.get("usage", {})
+        timing = parsed.get("timing") if isinstance(parsed.get("timing"), dict) else {}
+        usage = parsed.get("usage") if isinstance(parsed.get("usage"), dict) else {}
         return templates.TemplateResponse(
             request,
             "detail.html",
