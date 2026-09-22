@@ -2,19 +2,9 @@ import AppKit
 
 @MainActor
 final class MenuBarStatusPresenter {
-    let badgeView = MenuBarActivityBadgeView()
-
-    func install(on button: NSStatusBarButton) {
-        guard badgeView.superview !== button else { return }
-
-        badgeView.translatesAutoresizingMaskIntoConstraints = false
-        button.addSubview(badgeView)
-        NSLayoutConstraint.activate([
-            badgeView.trailingAnchor.constraint(equalTo: button.trailingAnchor),
-            badgeView.bottomAnchor.constraint(equalTo: button.bottomAnchor, constant: 2),
-            badgeView.heightAnchor.constraint(equalToConstant: 11),
-        ])
-    }
+    private weak var presentedButton: NSStatusBarButton?
+    private var displayedPhase: ServerPhase?
+    private(set) var displayedCount: Int?
 
     func update(
         button: NSStatusBarButton,
@@ -22,16 +12,23 @@ final class MenuBarStatusPresenter {
         activeWorkers: Int
     ) {
         let count = max(activeWorkers, 0)
+        let badgeCount = count > 0 ? count : nil
+        guard presentedButton !== button || displayedPhase != phase || displayedCount != badgeCount
+        else { return }
+
         let label = Self.accessibilityLabel(for: phase, activeWorkers: count)
-        let image = NSImage(
+        let symbol = NSImage(
             systemSymbolName: phase.menuBarSymbol,
             accessibilityDescription: label
         )
+        let image = badgeCount.map { Self.badgedImage(symbol: symbol, count: $0) } ?? symbol
         image?.isTemplate = true
         button.image = image
         button.toolTip = label
         button.setAccessibilityLabel(label)
-        badgeView.update(count: count)
+        presentedButton = button
+        displayedPhase = phase
+        displayedCount = badgeCount
     }
 
     static func accessibilityLabel(for phase: ServerPhase, activeWorkers: Int) -> String {
@@ -39,82 +36,43 @@ final class MenuBarStatusPresenter {
         let noun = activeWorkers == 1 ? "worker" : "workers"
         return "AgentBridge: \(phase.label), \(activeWorkers) active \(noun)"
     }
-}
+    private static func badgedImage(symbol: NSImage?, count: Int) -> NSImage {
+        let text = NSAttributedString(
+            string: String(count),
+            attributes: [
+                .font: NSFont.systemFont(ofSize: 7.5, weight: .semibold),
+                .foregroundColor: NSColor.black,
+            ]
+        )
+        let textSize = text.size()
+        let badgeWidth = max(11, ceil(textSize.width) + 1.5)
+        let size = NSSize(width: max(22, badgeWidth), height: 22)
 
-@MainActor
-final class MenuBarActivityBadgeView: NSView {
-    private let countLabel = NSTextField(labelWithString: "")
-
-    private(set) var displayedCount: Int?
-
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        configureView()
-    }
-
-    required init?(coder: NSCoder) {
-        super.init(coder: coder)
-        configureView()
-    }
-
-    override var intrinsicContentSize: NSSize {
-        let labelWidth = ceil(countLabel.intrinsicContentSize.width)
-        return NSSize(width: max(11, labelWidth + 1.5), height: 11)
-    }
-
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        nil
-    }
-
-    override func viewDidChangeEffectiveAppearance() {
-        super.viewDidChangeEffectiveAppearance()
-        updateColors()
-    }
-
-    func update(count: Int) {
-        guard count > 0 else {
-            displayedCount = nil
-            countLabel.stringValue = ""
-            isHidden = true
-            invalidateIntrinsicContentSize()
-            return
+        // AppKit snapshots status items under different appearances. A layer-backed
+        // badge/text-field subview mutates during those callbacks and can schedule
+        // another snapshot indefinitely, even while hidden. Keep the entire icon
+        // in one template image so snapshots never update a custom view hierarchy.
+        return NSImage(size: size, flipped: false) { rect in
+            symbol?.draw(in: NSRect(x: (rect.width - 18) / 2, y: 3, width: 18, height: 18))
+            let badge = NSBezierPath(roundedRect: NSRect(
+                x: rect.width - badgeWidth, y: 0, width: badgeWidth, height: 11
+            ), xRadius: 5.5, yRadius: 5.5)
+            guard let context = NSGraphicsContext.current?.cgContext else { return false }
+            context.saveGState()
+            context.setBlendMode(.clear)
+            badge.fill()
+            context.setBlendMode(.normal)
+            NSColor.black.withAlphaComponent(0.48).setFill()
+            badge.fill()
+            // Cut the number out of the alpha mask; macOS supplies the contrasting
+            // foreground color for both light and dark menu bars.
+            context.setBlendMode(.destinationOut)
+            text.draw(at: NSPoint(
+                x: rect.width - badgeWidth + (badgeWidth - textSize.width) / 2,
+                y: (11 - textSize.height) / 2
+            ))
+            context.restoreGState()
+            return true
         }
-
-        displayedCount = count
-        countLabel.stringValue = String(count)
-        isHidden = false
-        invalidateIntrinsicContentSize()
-    }
-
-    private func configureView() {
-        wantsLayer = true
-        layer?.cornerRadius = 5.5
-        layer?.cornerCurve = .continuous
-
-        countLabel.translatesAutoresizingMaskIntoConstraints = false
-        countLabel.font = .systemFont(ofSize: 7.5, weight: .semibold)
-        countLabel.alignment = .center
-        countLabel.lineBreakMode = .byClipping
-        countLabel.maximumNumberOfLines = 1
-        addSubview(countLabel)
-
-        NSLayoutConstraint.activate([
-            countLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 0.75),
-            countLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -0.75),
-            countLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-        ])
-
-        setAccessibilityElement(false)
-        isHidden = true
-        updateColors()
-    }
-
-    private func updateColors() {
-        let match = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua])
-        let usesDarkMenuBar = match == .darkAqua
-        layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.48).cgColor
-        countLabel.textColor = usesDarkMenuBar
-            ? NSColor.black.withAlphaComponent(0.78)
-            : NSColor.white.withAlphaComponent(0.94)
     }
 }

@@ -77,8 +77,8 @@ final class StatusModelsTests: XCTestCase {
     func testMenuBarBadgeIsHiddenWithoutActiveWorkers() throws {
         let (canvas, button, presenter) = makeMenuBarFixture(activeWorkers: 0)
 
-        XCTAssertTrue(presenter.badgeView.isHidden)
-        XCTAssertNil(presenter.badgeView.displayedCount)
+        XCTAssertTrue(button.subviews.isEmpty)
+        XCTAssertNil(presenter.displayedCount)
         XCTAssertEqual(button.toolTip, "AgentBridge: Running")
 
         try writeSnapshot(
@@ -103,15 +103,15 @@ final class StatusModelsTests: XCTestCase {
             activeWorkers: 48
         )
         XCTAssertEqual(button.image?.isTemplate, true)
-        XCTAssertFalse(presenter.badgeView.isHidden)
+        XCTAssertEqual(presenter.displayedCount, 48)
     }
 
     @MainActor
     func testMenuBarBadgeShowsActiveWorkerCount() throws {
         let (canvas, button, presenter) = makeMenuBarFixture(activeWorkers: 48)
 
-        XCTAssertFalse(presenter.badgeView.isHidden)
-        XCTAssertEqual(presenter.badgeView.displayedCount, 48)
+        XCTAssertTrue(button.subviews.isEmpty)
+        XCTAssertEqual(presenter.displayedCount, 48)
         XCTAssertEqual(button.toolTip, "AgentBridge: Running, 48 active workers")
         XCTAssertEqual(button.image?.isTemplate, true)
 
@@ -119,6 +119,27 @@ final class StatusModelsTests: XCTestCase {
             of: canvas,
             requestedBy: "AGENTBRIDGE_STATUS_ITEM_SNAPSHOT_PATH"
         )
+    }
+
+    @MainActor
+    func testUnchangedHealthDoesNotReplaceStatusImage() {
+        let (_, button, presenter) = makeMenuBarFixture(activeWorkers: 2)
+        let image = button.image
+
+        for _ in 0..<10 {
+            presenter.update(button: button, phase: .runningManaged, activeWorkers: 2)
+        }
+
+        XCTAssertTrue(button.image === image)
+        XCTAssertTrue(button.subviews.isEmpty)
+
+        presenter.update(button: button, phase: .runningManaged, activeWorkers: 0)
+        XCTAssertFalse(button.image === image)
+        XCTAssertNil(presenter.displayedCount)
+        XCTAssertEqual(button.toolTip, "AgentBridge: Running")
+
+        presenter.update(button: button, phase: .failed, activeWorkers: 0)
+        XCTAssertEqual(button.toolTip, "AgentBridge: Needs attention")
     }
 
     @MainActor
@@ -139,7 +160,6 @@ final class StatusModelsTests: XCTestCase {
         button.isBordered = false
         canvas.addSubview(button)
         let presenter = MenuBarStatusPresenter()
-        presenter.install(on: button)
         presenter.update(
             button: button,
             phase: .runningManaged,
