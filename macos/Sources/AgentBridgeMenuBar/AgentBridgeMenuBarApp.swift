@@ -40,7 +40,6 @@ final class AgentBridgeAppDelegate: NSObject, NSApplicationDelegate {
         if let button = item.button {
             button.target = self
             button.action = #selector(togglePopover(_:))
-            statusPresenter.install(on: button)
             statusPresenter.update(
                 button: button,
                 phase: controller.phase,
