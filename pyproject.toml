@@ -71,6 +71,7 @@ select = ["E", "F", "I"]
 required-version = "==0.11.13"
 exclude-newer = "7 days"
 constraint-dependencies = [
+  "anyio>=4.14.2",
   "click>=8.3.3",
   "cryptography>=50.0.0",
   "idna>=3.15",
