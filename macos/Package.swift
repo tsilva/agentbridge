@@ -11,7 +11,10 @@ let package = Package(
         .executable(name: "AgentBridgeMenuBar", targets: ["AgentBridgeMenuBar"]),
     ],
     targets: [
-        .executableTarget(name: "AgentBridgeMenuBar"),
+        .executableTarget(
+            name: "AgentBridgeMenuBar",
+            resources: [.process("Resources")]
+        ),
         .testTarget(
             name: "AgentBridgeMenuBarTests",
             dependencies: ["AgentBridgeMenuBar"]
