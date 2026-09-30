@@ -88,7 +88,7 @@ curl http://localhost:8082/api/v1/chat/completions \
 Every request requires one of these model namespaces:
 
 - `claudecode/<model>` — `opus`, `sonnet`, `haiku`, or a namespaced Claude slug containing one of those names.
-- `codex/<model>` — passed directly to Codex CLI. `gpt-5.6-sol` and `gpt-5.5` default to high reasoning effort unless the request overrides it.
+- `codex/<model>` — passed directly to Codex CLI. `gpt-6-astra` defaults to low reasoning effort; `gpt-5.6-sol` and `gpt-5.5` default to high reasoning effort unless the request overrides it. Astra image generation also uses low reasoning effort.
 - `openrouter/<provider>/<model>` — passed to the official OpenRouter Python SDK.
 
 OpenAI SDKs may use any placeholder API key:
@@ -98,7 +98,7 @@ from openai import OpenAI
 
 client = OpenAI(base_url="http://localhost:8082/api/v1", api_key="not-needed")
 response = client.chat.completions.create(
-    model="codex/gpt-5.6-sol",
+    model="codex/gpt-6-astra",
     reasoning_effort="high",
     messages=[{"role": "user", "content": "Hello from Codex!"}],
 )
@@ -112,7 +112,7 @@ raster:
 ```bash
 curl http://localhost:8082/api/v1/images \
   -H "Content-Type: application/json" \
-  -d "{\"model\":\"codex/gpt-5.6-sol\",\"prompt\":\"Make this look like a scanner capture without changing any content.\",\"input_references\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,$PAGE_DATA\"}}],\"n\":1,\"store\":false}"
+  -d "{\"model\":\"codex/gpt-6-astra\",\"prompt\":\"Make this look like a scanner capture without changing any content.\",\"input_references\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,$PAGE_DATA\"}}],\"n\":1,\"store\":false}"
 ```
 
 `GET /api/v1/capabilities` reports whether the local Codex CLI is available,

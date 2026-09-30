@@ -34,6 +34,7 @@ from agentbridge.models import (
 from agentbridge.server import (
     ClaudeResponse,
     _build_codex_command,
+    _call_codex_image,
     _cleanup_codex_generated_thread,
     _codex_output_schema,
     _message_from_openrouter,
@@ -416,6 +417,33 @@ class TestCodexHelpers:
         assert "image_generation" in cmd[:exec_index]
         assert cmd[cmd.index("--output-schema") + 1] == "/tmp/work/schema.json"
 
+    @pytest.mark.parametrize(
+        ("model", "expected"),
+        [("gpt-6-astra", "low"), ("gpt-5.6-sol", "high"), ("gpt-5.4-mini", "high")],
+    )
+    async def test_image_generation_uses_model_reasoning_default(self, model, expected):
+        generated = _png_bytes()
+        proc = AsyncMock()
+        proc.returncode = 0
+        proc.communicate.return_value = (b"", b"")
+        with (
+            patch("agentbridge.server._codex_binary", return_value="/bin/codex"),
+            patch("agentbridge.server.asyncio.create_subprocess_exec", return_value=proc) as spawn,
+            patch("agentbridge.server._read_codex_generated_image", return_value=generated),
+        ):
+            image, usage = await _call_codex_image(
+                model=f"codex/{model}",
+                prompt="Clean this page",
+                media_type="image/png",
+                source_data=_png_bytes(),
+                request_id="test-image-reasoning",
+            )
+
+        assert image == generated
+        assert usage is None
+        assert spawn.await_args.args[spawn.await_args.args.index("-m") + 1] == model
+        assert f'model_reasoning_effort="{expected}"' in spawn.await_args.args
+
     def test_parse_codex_run_extracts_trusted_thread_and_disallowed_tool_types(self):
         thread_id = "019feb8d-47c8-78e2-ba97-2d62a15b71c0"
         output = "\n".join(
@@ -544,6 +572,17 @@ class TestCodexHelpers:
         resolution = resolve_model_request(request.model)
 
         assert _resolve_codex_reasoning_effort(request, resolution) == "high"
+
+    @pytest.mark.parametrize("explicit_effort, expected", [(None, "low"), ("high", "high")])
+    def test_astra_reasoning_effort(self, explicit_effort, expected):
+        request = ChatCompletionRequest(
+            model="codex/gpt-6-astra",
+            messages=[Message(role="user", content="Hello")],
+            reasoning_effort=explicit_effort,
+        )
+        resolution = resolve_model_request(request.model)
+
+        assert _resolve_codex_reasoning_effort(request, resolution) == expected
 
     def test_request_reasoning_effort_overrides_gpt55_default(self):
         """Explicit reasoning_effort wins over the gpt-5.5 default."""
