@@ -11,7 +11,6 @@ resources_path="${contents_path}/Resources"
 server_path="${resources_path}/server"
 python_path="${server_path}/python"
 site_packages_path="${server_path}/site-packages"
-package_build_path="${repository_root}/macos/.build"
 signing_identity="${CODE_SIGN_IDENTITY:--}"
 
 version="$(uv run --no-project --python 3.12 python - <<'PY'
@@ -51,9 +50,18 @@ mkdir -p "${contents_path}/MacOS" "${resources_path}"
 swift build \
     --package-path "${repository_root}/macos" \
     --configuration release
-cp "${package_build_path}/release/AgentBridgeMenuBar" \
+package_build_path="$(
+    swift build \
+        --package-path "${repository_root}/macos" \
+        --configuration release \
+        --show-bin-path
+)"
+cp "${package_build_path}/AgentBridgeMenuBar" \
     "${contents_path}/MacOS/AgentBridgeMenuBar"
 chmod 755 "${contents_path}/MacOS/AgentBridgeMenuBar"
+ditto \
+    "${package_build_path}/AgentBridgeMenuBar_AgentBridgeMenuBar.bundle" \
+    "${resources_path}/AgentBridgeMenuBar_AgentBridgeMenuBar.bundle"
 
 uv build --wheel --out-dir "${output_root}/python-dist" "${repository_root}"
 
