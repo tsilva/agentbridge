@@ -204,6 +204,7 @@ SIMPLE_NAMES = CLAUDE_SIMPLE_NAMES
 PROVIDER_NAMES: set[str] = {"claudecode", "codex", "openrouter"}
 
 CODEX_MODELS: dict[str, ReasoningEffort | None] = {
+    "gpt-6-astra": "low",
     "gpt-5.6-sol": "high",
     "gpt-5.5": "high",
     "gpt-5.4": None,

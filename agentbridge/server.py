@@ -1414,7 +1414,7 @@ async def _call_codex_image(
                     work_dir,
                     output_file,
                     [reference_path],
-                    "high",
+                    CODEX_DEFAULT_REASONING_EFFORT_BY_MODEL.get(resolution.model, "high"),
                     strict=True,
                     image_generation=True,
                 ),
