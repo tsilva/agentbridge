@@ -20,9 +20,10 @@ def test_patched_dependency_versions_are_installed() -> None:
         "mcp": "1.28.1",
         "pydantic-settings": "2.14.2",
         "pygments": "2.20.0",
-        "pyjwt": "2.13.0",
+        "pyjwt": "2.15.0",
         "python-multipart": "0.0.31",
         "starlette": "1.3.1",
+        "urllib3": "2.8.0",
     }
     for package, floor in floors.items():
         assert Version(version(package)) >= Version(floor)
