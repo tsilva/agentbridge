@@ -448,9 +448,9 @@ class TestDashboardPage:
 
         assert "function loadDefaultRequest()" in page.text
         assert "else {\n                    loadDefaultRequest();\n                }" in page.text
-        assert "markSelected(findRequestRow(selectedId), { scroll: false });" in page.text
+        assert "loadSelectedDetail({ scroll: false });" in page.text
         assert (
-            "markSelected(findRequestRow(selectedId), { scroll: false });\n"
+            "loadSelectedDetail({ scroll: false });\n"
             "                    } else {\n"
             "                        loadDefaultRequest();"
         ) in page.text
@@ -489,6 +489,13 @@ class TestDashboardPage:
 class TestDashboardChatPage:
     """Tests for GET /dashboard/chat."""
 
+    def test_default_model_is_available_and_selected(self):
+        """A fresh chat uses the advertised Codex default."""
+        resp = TestClient(_make_app()).get("/dashboard/chat")
+        assert (
+            '<option value="codex/gpt-6.1-sol" selected>codex/gpt-6.1-sol</option>'
+        ) in resp.text
+
     def test_returns_chat_html(self):
         """Chat page includes attachment and error-detail UI."""
         app = _make_app()
@@ -522,7 +529,7 @@ class TestDashboardChatPage:
         assert 'class="nav-item active" href="/dashboard/chat">Chat</a>' in resp.text
         assert '<option value="codex/gpt-5.6-sol">codex/gpt-5.6-sol</option>' in resp.text
         assert 'if (e.key !== "Enter" || e.isComposing) return;' in resp.text
-        assert "if (e.altKey) return;" in resp.text
+        assert "if (e.shiftKey || e.altKey) return;" in resp.text
         assert "e.preventDefault();" in resp.text
         assert 'aria-label="Send message"' in resp.text
         assert '<button id="send" class="primary" type="button">Send</button>' not in resp.text
@@ -568,9 +575,8 @@ class TestDashboardChatPage:
         )
         assert "async function submitPreparedMessage(payload, userMessage, userTarget)" in resp.text
         assert 'retry.addEventListener("click", sendMessage)' not in resp.text
-        assert "if (chunk.error)" in resp.text
+        assert "if (chunk && chunk.error)" in resp.text
         assert 'error.type = "stream_error"' in resp.text
-        assert 'if (e.type === "stream_error") throw e;' in resp.text
         assert "var summary = status ? String(status)" in resp.text
 
     def test_discarded_assistant_is_removed_from_persisted_chat_state(self):
@@ -581,7 +587,7 @@ class TestDashboardChatPage:
         assert "renderedMessages.splice(index, 1);" in resp.text
         assert "removeRenderedMessage(article);" in resp.text
         assert 'role: "error"' in resp.text
-        assert 'if (message.role === "error")' in resp.text
+        assert 'if (message.role === "error" || message.pendingRequest)' in resp.text
 
 
 class TestDashboardPool:
@@ -778,3 +784,57 @@ class TestDashboardStream:
         client = TestClient(app)
         resp = client.get("/dashboard/stream/chatcmpl-00000000")
         assert resp.status_code == 404
+
+
+@pytest.mark.parametrize("outcome", ["done", "error"])
+async def test_full_subscriber_queue_retains_terminal_event(outcome):
+    """Slow Monitor clients must eventually finish and load the saved result."""
+    state = DashboardState()
+    state.request_started("request", "model")
+    queue = state.subscribe("request")
+    for _ in range(queue.maxsize):
+        state.chunk_received("request", "token")
+    if outcome == "done":
+        state.request_completed("request")
+    else:
+        state.request_errored("request", "failed")
+    events = [queue.get_nowait() for _ in range(queue.qsize())]
+    assert events[-1]["type"] == outcome
+    assert state.active_request_count() == 0
+
+
+@pytest.mark.parametrize("text", ["\n", "first\n", "first\n\nlast\n", "<tag> & text"])
+def test_monitor_sse_preserves_text_and_trailing_newlines(text):
+    from agentbridge.dashboard import _sse_data_lines
+
+    encoded = _sse_data_lines(text)
+    decoded = "\n".join(line.removeprefix("data: ") for line in encoded.split("\n"))
+    assert decoded == text
+
+
+def test_zero_token_counts_are_displayed_as_zero(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOG_DIR", str(tmp_path))
+    (tmp_path / "chatcmpl-00000001.json").write_text(json.dumps({
+        "request_id": "chatcmpl-00000001", "messages": [], "response": "ok",
+        "usage": {"input_tokens": 0, "output_tokens": 0},
+    }))
+    response = TestClient(_make_app()).get("/dashboard/request/chatcmpl-00000001")
+    assert response.status_code == 200
+    for label in ["Prompt Tokens", "Completion Tokens", "Total Tokens"]:
+        import re
+
+        assert re.search(label + r'</div>\s*<div class="meta-value">0</div>', response.text)
+
+
+
+async def test_monitor_subscription_recovers_tokens_between_render_and_connect():
+    state = DashboardState()
+    state.request_started("request", "model")
+    state.chunk_received("request", "initial 🌉\n")
+    captured = state.get_active_requests()[0]["buffered_text"]
+    state.chunk_received("request", "during connection\n")
+    queue = state.subscribe("request", offset=len(captured))
+    assert queue.get_nowait() == {"type": "chunk", "text": "during connection\n"}
+    state.chunk_received("request", "later\n")
+    assert queue.get_nowait() == {"type": "chunk", "text": "later\n"}
+    assert queue.empty()

@@ -716,22 +716,30 @@
 
             function renderInlineMarkdown(text) {
                 var codeTokens = [];
-                var html = escapeHtml(text).replace(/`([^`]+)`/g, function(match, code) {
+                var linkTokens = [];
+                var tokenized = String(text).replace(/`([^`]+)`/g, function(match, code) {
                     var token = "\u0000CODE" + codeTokens.length + "\u0000";
-                    codeTokens.push("<code>" + code + "</code>");
+                    codeTokens.push("<code>" + escapeHtml(code) + "</code>");
                     return token;
                 });
-
-                html = html.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, function(match, label, url) {
+                tokenized = tokenized.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, function(match, label, url) {
                     var href = escapeHtml(safeLinkUrl(url));
                     var rel = href === "#" ? "" : " rel=\"noreferrer\" target=\"_blank\"";
-                    return "<a href=\"" + href + "\"" + rel + ">" + label + "</a>";
+                    var token = "\u0000LINK" + linkTokens.length + "\u0000";
+                    var labelHtml = escapeHtml(label)
+                        .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+                        .replace(/\*([^*]+)\*/g, "<em>$1</em>");
+                    linkTokens.push("<a href=\"" + href + "\"" + rel + ">" + labelHtml + "</a>");
+                    return token;
                 });
+                var html = escapeHtml(tokenized);
                 html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
                 html = html.replace(/\*([^*]+)\*/g, "<em>$1</em>");
-
+                linkTokens.forEach(function(tokenHtml, index) {
+                    html = html.replace("\u0000LINK" + index + "\u0000", function() { return tokenHtml; });
+                });
                 codeTokens.forEach(function(tokenHtml, index) {
-                    html = html.replace("\u0000CODE" + index + "\u0000", tokenHtml);
+                    html = html.replace("\u0000CODE" + index + "\u0000", function() { return tokenHtml; });
                 });
                 return html;
             }
@@ -872,6 +880,12 @@
                 }).filter(Boolean);
             }
 
+            function saveDraft() {
+                try {
+                    sessionStorage.setItem(chatStateKey + ".draft", promptEl.value);
+                } catch (e) {}
+            }
+
             function saveChatState() {
                 try {
                     sessionStorage.setItem(chatStateKey, JSON.stringify({
@@ -913,13 +927,16 @@
                 clearEmptyState();
                 var article = document.createElement("article");
                 article.className = "message " + role;
+                article.dataset.messageId = options.messageId || crypto.randomUUID();
                 if (options.persist !== false) {
                     article.dataset.chatIndex = String(renderedMessages.length);
                     renderedMessages.push({
                         role: role,
+                        messageId: article.dataset.messageId,
                         text: text || "",
                         model: options.model || null,
                         requestId: options.requestId || null,
+                        pendingRequest: options.pendingRequest || null,
                         files: messageFileNames(files)
                     });
                 }
@@ -999,6 +1016,7 @@
             function restoreChatState() {
                 var raw = null;
                 try {
+                    promptEl.value = sessionStorage.getItem(chatStateKey + ".draft") || "";
                     raw = sessionStorage.getItem(chatStateKey);
                 } catch (e) {
                     return;
@@ -1015,21 +1033,23 @@
                         if (hasSavedModel) modelEl.value = state.model;
                     }
                     state.renderedMessages.forEach(function(message) {
-                        if (message.role === "error") {
+                        if (message.role === "error" || message.pendingRequest) {
+                            var interrupted = Boolean(message.pendingRequest);
                             var errorArticle = appendError(
                                 message.status || 0,
-                                message.statusText || "Request failed",
+                                interrupted ? "Request interrupted" : (message.statusText || "Request failed"),
                                 message.body || null,
                                 message.requestId || null,
                                 null,
-                                { persist: false }
+                                { persist: false, retryRequest: message.pendingRequest || message.retryRequest || null }
                             );
                             renderedMessages.push({
                                 role: "error",
                                 status: message.status || 0,
-                                statusText: message.statusText || "Request failed",
+                                statusText: interrupted ? "Request interrupted" : (message.statusText || "Request failed"),
                                 body: message.body || null,
-                                requestId: message.requestId || null
+                                requestId: message.requestId || null,
+                                retryRequest: message.pendingRequest || message.retryRequest || null
                             });
                             errorArticle.dataset.chatIndex = String(renderedMessages.length - 1);
                             return;
@@ -1040,12 +1060,14 @@
                             (message.files || []).map(function(name) { return { name: name }; }),
                             {
                                 model: message.model || null,
+                                messageId: message.messageId || null,
                                 requestId: message.requestId || null,
                                 persist: false
                             }
                         );
                         renderedMessages.push({
                             role: message.role,
+                            messageId: body.closest(".message").dataset.messageId,
                             text: message.text || "",
                             model: message.model || null,
                             requestId: message.requestId || null,
@@ -1087,8 +1109,23 @@
                 };
             }
 
+            function restoredRetryAction(retryRequest) {
+                if (!retryRequest || !retryRequest.payload || !Array.isArray(retryRequest.payload.messages)) return null;
+                var messages = retryRequest.payload.messages;
+                var userMessage = messages[messages.length - 1];
+                if (!userMessage || userMessage.role !== "user") return null;
+                var article = Array.from(messagesEl.querySelectorAll(".message.user")).find(function(message) {
+                    return message.dataset.messageId === retryRequest.userMessageId;
+                });
+                if (!article) return null;
+                return function() {
+                    retryPreparedMessage(retryRequest.payload, userMessage, article.querySelector(".message-body"));
+                };
+            }
+
             function appendError(status, statusText, body, requestId, retryAction, options) {
                 options = options || {};
+                retryAction = retryAction || restoredRetryAction(options.retryRequest);
                 clearEmptyState();
                 var info = summarizeError(status, statusText, body, requestId);
                 var article = document.createElement("article");
@@ -1129,6 +1166,7 @@
                     retry.type = "button";
                     retry.textContent = "Retry";
                     retry.addEventListener("click", function() {
+                        if (isSending) return;
                         removeRenderedMessage(article);
                         retryAction();
                     });
@@ -1147,7 +1185,8 @@
                         status: status,
                         statusText: statusText || null,
                         body: body || null,
-                        requestId: requestId || null
+                        requestId: requestId || null,
+                        retryRequest: options.retryRequest || null
                     });
                 }
                 messagesEl.appendChild(article);
@@ -1229,25 +1268,25 @@
                 });
             }
 
-            async function buildUserContent(text) {
-                if (!attachedFiles.length) return text;
+            async function buildUserContent(text, files) {
+                if (!files.length) return text;
                 var parts = [];
                 if (text) parts.push({ type: "text", text: text });
-                for (var i = 0; i < attachedFiles.length; i += 1) {
-                    if (isTextFile(attachedFiles[i])) {
-                        var fileText = await fileToText(attachedFiles[i]);
+                for (var i = 0; i < files.length; i += 1) {
+                    if (isTextFile(files[i])) {
+                        var fileText = await fileToText(files[i]);
                         parts.push({
                             type: "text",
                             text: [
-                                '[Attached text file: "' + attachedFiles[i].name + '"]',
+                                '[Attached text file: "' + files[i].name + '"]',
                                 fileText,
-                                '[End attached text file: "' + attachedFiles[i].name + '"]'
+                                '[End attached text file: "' + files[i].name + '"]'
                             ].join("\n")
                         });
                     } else {
                         parts.push({
                             type: "image_url",
-                            image_url: { url: await fileToDataUrl(attachedFiles[i]) }
+                            image_url: { url: await fileToDataUrl(files[i]) }
                         });
                     }
                 }
@@ -1271,6 +1310,8 @@
             }
 
             function parseSseEvent(buffer, onData) {
+                // Keep a final CR until the next read, since CRLF can span chunks.
+                buffer = buffer.replace(/\r\n/g, "\n").replace(/\r(?!$)/g, "\n");
                 var events = buffer.split(/\n\n/);
                 var remainder = events.pop();
                 events.forEach(function(event) {
@@ -1288,41 +1329,85 @@
                 var reader = response.body.getReader();
                 var decoder = new TextDecoder();
                 var buffer = "";
+                var completed = false;
 
-                while (true) {
-                    var read = await reader.read();
-                    if (read.done) break;
-                    buffer += decoder.decode(read.value, { stream: true });
-                    buffer = parseSseEvent(buffer, function(data) {
-                        if (data === "[DONE]") return;
-                        try {
-                            var chunk = JSON.parse(data);
-                            if (chunk.error) {
-                                var error = new Error(chunk.error.message || "Streaming request failed");
-                                error.type = "stream_error";
-                                error.details = chunk;
-                                throw error;
-                            }
-                            var choice = chunk.choices && chunk.choices[0];
-                            var delta = choice && choice.delta && choice.delta.content;
-                            if (delta) {
-                                appendAssistantDelta(target, delta);
-                            }
-                        } catch (e) {
-                            if (e.type === "stream_error") throw e;
-                            appendAssistantDelta(target, data);
-                        }
-                    });
+                function streamError(message, code, details) {
+                    var error = new Error(message);
+                    error.type = "stream_error";
+                    error.details = details || { error: { message: message, type: "stream_error", code: code } };
+                    return error;
                 }
-                if (target.classList.contains("typing")) renderAssistantMarkdown(target, "");
-                return target.dataset.rawMarkdown || "";
+
+                function onData(data) {
+                    if (completed) return;
+                    if (data === "[DONE]") {
+                        completed = true;
+                        return;
+                    }
+                    var chunk;
+                    try {
+                        chunk = JSON.parse(data);
+                    } catch (e) {
+                        throw streamError("Invalid JSON in streaming response.", "invalid_stream");
+                    }
+                    if (chunk && chunk.error) {
+                        throw streamError(chunk.error.message || "Streaming request failed", "provider_error", chunk);
+                    }
+                    if (!chunk || !Array.isArray(chunk.choices)) {
+                        throw streamError("Invalid streaming response.", "invalid_stream");
+                    }
+                    var choice = chunk.choices[0];
+                    var delta = choice && choice.delta && choice.delta.content;
+                    if (delta !== undefined && delta !== null && typeof delta !== "string") {
+                        throw streamError("Invalid streaming content.", "invalid_stream");
+                    }
+                    if (delta) appendAssistantDelta(target, delta);
+                }
+
+                try {
+                    while (!completed) {
+                        var read = await reader.read();
+                        if (read.done) {
+                            buffer += decoder.decode();
+                            parseSseEvent(buffer.replace(/\r$/, "\n"), onData);
+                            break;
+                        }
+                        buffer += decoder.decode(read.value, { stream: true });
+                        buffer = parseSseEvent(buffer, onData);
+                    }
+                    if (!completed) {
+                        throw streamError("The response stream ended before completion. Retry the request.", "incomplete_stream");
+                    }
+                    if (target.classList.contains("typing")) renderAssistantMarkdown(target, "");
+                    return target.dataset.rawMarkdown || "";
+                } finally {
+                    await reader.cancel().catch(function() {});
+                    reader.releaseLock();
+                }
+            }
+
+            async function retryPreparedMessage(payload, userMessage, userTarget) {
+                if (isSending) return;
+                isSending = true;
+                updateSendAvailability();
+                try {
+                    await submitPreparedMessage(payload, userMessage, userTarget);
+                } finally {
+                    isSending = false;
+                    updateSendAvailability();
+                }
             }
 
             async function submitPreparedMessage(payload, userMessage, userTarget) {
-                isSending = true;
-                updateSendAvailability();
                 setStatus(null, "Sending");
-                var assistantTarget = appendMessage("assistant", "", null, { model: payload.model, loading: true });
+                var retryRequest = {
+                    payload: payload,
+                    userMessageId: userTarget.closest(".message").dataset.messageId
+                };
+                var assistantTarget = appendMessage("assistant", "", null, {
+                    model: payload.model, loading: true, pendingRequest: retryRequest
+                });
+                var requestId = null;
 
                 try {
                     var response = await fetch(endpoint("/chat/completions"), {
@@ -1330,7 +1415,7 @@
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify(payload)
                     });
-                    var requestId = response.headers.get("x-request-id");
+                    requestId = response.headers.get("x-request-id");
                     setMessageRequestId(userTarget, requestId);
                     setMessageRequestId(assistantTarget, requestId);
 
@@ -1341,17 +1426,18 @@
                             response.statusText,
                             await parseResponseBody(response),
                             requestId,
-                            function() { submitPreparedMessage(payload, userMessage, userTarget); }
+                            function() { retryPreparedMessage(payload, userMessage, userTarget); },
+                            { retryRequest: retryRequest }
                         );
                         return;
                     }
 
-                    setStatus("ok", "Healthy");
-                    conversationMessages.push(userMessage);
                     var streamedText = await streamResponse(response, assistantTarget);
+                    conversationMessages.push(userMessage);
                     conversationMessages.push({ role: "assistant", content: streamedText });
-                    updateRenderedMessage(assistantTarget, { text: streamedText });
+                    updateRenderedMessage(assistantTarget, { text: streamedText, pendingRequest: null });
                     saveChatState();
+                    setStatus("ok", "Healthy");
                 } catch (error) {
                     removeMessageBody(assistantTarget);
                     appendError(0, error.type === "stream_error" ? "Stream failed" : "Request failed", error.details || {
@@ -1360,15 +1446,14 @@
                             type: "network_error",
                             code: "request_failed"
                         }
-                    }, null, function() { submitPreparedMessage(payload, userMessage, userTarget); });
-                } finally {
-                    isSending = false;
-                    updateSendAvailability();
+                    }, requestId, function() { retryPreparedMessage(payload, userMessage, userTarget); }, { retryRequest: retryRequest });
                 }
             }
 
             async function sendMessage() {
-                var text = promptEl.value.trim();
+                if (isSending) return;
+                var draft = promptEl.value;
+                var text = draft.trim();
                 if (!text && !attachedFiles.length) return;
 
                 isSending = true;
@@ -1376,8 +1461,8 @@
                 setStatus(null, "Sending");
 
                 try {
-                    var content = await buildUserContent(text);
                     var filesForMessage = attachedFiles.slice();
+                    var content = await buildUserContent(text, filesForMessage);
                     var userMessage = { role: "user", content: content };
                     var payload = {
                         model: modelEl.value,
@@ -1386,9 +1471,12 @@
                     };
                     var userTarget = appendMessage("user", displayTextForMessage(text, filesForMessage), filesForMessage);
 
-                    promptEl.value = "";
+                    if (promptEl.value === draft) promptEl.value = "";
+                    saveDraft();
                     autosizePrompt();
-                    attachedFiles = [];
+                    attachedFiles = attachedFiles.filter(function(file) {
+                        return filesForMessage.indexOf(file) === -1;
+                    });
                     renderAttachedFiles();
 
                     await submitPreparedMessage(payload, userMessage, userTarget);
@@ -1400,6 +1488,7 @@
                             code: "request_preparation_failed"
                         }
                     }, null, sendMessage);
+                } finally {
                     isSending = false;
                     updateSendAvailability();
                 }
@@ -1424,12 +1513,13 @@
             sendEl.addEventListener("click", sendMessage);
             modelEl.addEventListener("change", saveChatState);
             promptEl.addEventListener("input", function() {
+                saveDraft();
                 autosizePrompt();
                 updateSendAvailability();
             });
             promptEl.addEventListener("keydown", function(e) {
                 if (e.key !== "Enter" || e.isComposing) return;
-                if (e.altKey) return;
+                if (e.shiftKey || e.altKey) return;
                 e.preventDefault();
                 sendMessage();
             });

@@ -5,6 +5,17 @@ description: Build, publish, and verify AgentBridge releases. Use when the user 
 
 # Build Release
 
+Read and apply the shared `$release-workflow` skill at
+`/Users/tsilva/.codex/skills/release-workflow/SKILL.md` before execution.
+It owns common preflight, publication safeguards, `$push` integration,
+workflow monitoring, verification, and reporting. The rules below are this
+project's adapter; they retain its invocation default and required gates.
+If the shared skill is unavailable, stop and report the missing dependency.
+
+A bare `$build-release` or `/build-release` invocation requests the full
+publication flow below. An explicitly local build or verification request uses
+only the corresponding non-publishing checks.
+
 Use the repository-owned GitHub Actions workflow and PyPI Trusted Publishing.
 Do not create a local tag or upload with local credentials: pushing a new
 `pyproject.toml` version to `main` triggers `.github/workflows/release.yml`,
@@ -69,34 +80,20 @@ release_sha="$(git rev-parse HEAD)"
 git push origin HEAD:main
 ```
 
-Never stage unrelated user changes. Do not create the tag locally; the release
-workflow owns it.
+Do not create the tag locally; the release workflow owns it.
 
-5. Find and monitor the release workflow for the pushed commit:
+5. Follow shared monitoring for the `release.yml` `push` run at the pushed
+release commit SHA. A manual dispatch publishes only when its `publish` input
+is explicitly true.
 
-```bash
-gh run list --workflow release.yml --commit "$release_sha" --limit 5 \
-  --json databaseId,status,conclusion,event,headSha,url
-gh run watch <run-id> --exit-status
-```
-
-If the commit-filtered result has not appeared, poll briefly. Select the
-`push` run for the exact SHA. A manual dispatch publishes only when its
-`publish` input is explicitly true.
-
-6. After the workflow succeeds, verify exact-version files on PyPI and inspect
-the GitHub Release:
+6. Verify exact-version PyPI files and GitHub assets:
 
 ```bash
 python3 .codex/skills/build-release/scripts/release_build.py wait-pypi --version <version>
-gh release view v<version> --json url,tagName,assets
 ```
 
-Require `AgentBridge-<version>-macos-arm64.dmg` and its `.sha256` file in the
-release assets. Do not report success until PyPI returns exact-version files and
-all required GitHub assets exist. If the workflow fails, inspect
-`gh run view <run-id> --log-failed` and report the failed gate before considering
-recovery.
+Require `AgentBridge-<version>-macos-arm64.dmg` and its `.sha256` file on the
+`v<version>` GitHub Release, alongside the Python distributions.
 
 If an existing release is missing only its macOS assets, attach them without
 republishing Python distributions:
@@ -104,10 +101,3 @@ republishing Python distributions:
 ```bash
 gh workflow run release.yml --ref main -f attach_macos=true
 ```
-
-## Final Response
-
-Lead with the exact PyPI version URL. Report the tag, release workflow URL and
-conclusion, GitHub Release URL, pushed commit, every Python distribution, and
-every macOS DMG/checksum filename. On failure, report the exact command or job
-and the next safe recovery action.

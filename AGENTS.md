@@ -44,6 +44,14 @@ uv lock --check
 uv build
 ```
 
+## Dashboard audit
+
+Use the project-level
+[$agentbridge-dashboard-audit](.codex/skills/agentbridge-dashboard-audit/SKILL.md)
+for hands-on local dashboard testing, reproducing and fixing requested bugs,
+and verifying an authorized local reinstall/restart. It covers native in-app
+Browser testing, deterministic fixtures, and regression verification.
+
 ## Release workflow
 
 Use the project-level `$build-release` skill for version selection, release
@@ -51,3 +59,10 @@ validation, publishing, GitHub Release creation, and PyPI verification.
 
 Use the native Codex Desktop in-app Browser for dashboard verification, and do
 not disturb an existing development server.
+
+## Shared release procedure
+
+The project `build-release` skill composes `$release-workflow` from
+`/Users/tsilva/.codex/skills/release-workflow/SKILL.md`.
+Read both for release work; keep project commands, version policy, artifact
+requirements, and approval gates in the project adapter.
