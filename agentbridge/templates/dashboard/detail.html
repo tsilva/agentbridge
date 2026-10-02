@@ -52,11 +52,11 @@
         </div>
         <div class="meta-item">
             <div class="meta-label">Prompt Tokens</div>
-            <div class="meta-value">{{ input_tokens|default("-", true) }}</div>
+            <div class="meta-value">{{ input_tokens if input_tokens is not none else "-" }}</div>
         </div>
         <div class="meta-item">
             <div class="meta-label">Completion Tokens</div>
-            <div class="meta-value">{{ output_tokens|default("-", true) }}</div>
+            <div class="meta-value">{{ output_tokens if output_tokens is not none else "-" }}</div>
         </div>
         <div class="meta-item">
             <div class="meta-label">Total Tokens</div>
@@ -86,12 +86,12 @@
                 {% endif %}
 
                 {% if is_active %}
-                <div class="live-stream" hx-ext="sse" sse-connect="/dashboard/stream/{{ request_id }}" sse-swap="chunk" hx-swap="beforeend">
+                <div class="live-stream" hx-ext="sse" sse-connect="/dashboard/stream/{{ request_id }}?offset={{ buffered_text|length }}">
                     <div class="live-stream-title">
                         <span class="status-dot idle"></span>
                         Live Stream
                     </div>
-                    <pre id="stream-output">{{ buffered_text }}</pre>
+                    <pre id="stream-output" sse-swap="chunk" hx-swap="beforeend">{{ buffered_text }}</pre>
                     <div hx-get="/dashboard/request/{{ request_id }}"
                          hx-trigger="sse:done delay:500ms, sse:error delay:500ms"
                          hx-target="#detail"
@@ -116,7 +116,7 @@
                         </div>
                         <div class="error-actions">
                             <button class="action-button" type="button" data-copy="{{ error }}">Copy details</button>
-                            <button class="action-button" type="button" onclick="location.reload()">Retry</button>
+                            <button class="action-button" type="button" onclick="location.reload()">Refresh</button>
                         </div>
                     </div>
                     <pre class="error-pre">{

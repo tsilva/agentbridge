@@ -1,0 +1,4 @@
+interface:
+  display_name: "AgentBridge Dashboard Audit"
+  short_description: "Audit and fix the local AgentBridge dashboard"
+  default_prompt: "Use $agentbridge-dashboard-audit to test the active AgentBridge dashboard, reproduce bugs, and verify requested fixes."

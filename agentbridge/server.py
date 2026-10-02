@@ -14,13 +14,14 @@ import tempfile
 import time
 import traceback
 import urllib.parse
-from contextlib import asynccontextmanager
+from contextlib import aclosing, asynccontextmanager, suppress
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+import anyio
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -1828,9 +1829,8 @@ async def stream_openrouter_api(
         model=request.model,
         choices=[StreamChoice(delta=DeltaMessage(role="assistant", content=""))],
     )
-    yield f"data: {initial_chunk.model_dump_json()}\n\n"
-
     try:
+        yield f"data: {initial_chunk.model_dump_json()}\n\n"
         payload = _openrouter_payload(request, backend_model, stream=True)
         async for chunk in _openrouter_stream_chunks(payload):
             if not isinstance(chunk, dict):
@@ -1890,6 +1890,7 @@ async def stream_openrouter_api(
         yield "data: [DONE]\n\n"
     finally:
         if not _dashboard_handled:
+            session_logger.log_error("Request cancelled", exception_type="CancelledError")
             dashboard_state.request_errored(request_id, "Request cancelled")
 
 
@@ -2071,8 +2072,6 @@ async def stream_claude_sdk(
         model=model,
         choices=[StreamChoice(delta=DeltaMessage(role="assistant", content=""))],
     )
-    yield f"data: {initial_chunk.model_dump_json()}\n\n"
-
     # Buffer for tool response parsing
     full_text = ""
     stream_usage: Usage | None = None
@@ -2081,6 +2080,7 @@ async def stream_claude_sdk(
     query_start: float | None = None
 
     try:
+        yield f"data: {initial_chunk.model_dump_json()}\n\n"
         acquire_start = time.monotonic()
         claude_pool = await ensure_claude_pool()
         async with claude_pool.acquire(resolved_model, request_id=request_id) as client:
@@ -2242,7 +2242,19 @@ async def stream_claude_sdk(
     finally:
         # Handles GeneratorExit/CancelledError — only fires if not already handled
         if not _dashboard_handled:
+            session_logger.log_error("Request cancelled", exception_type="CancelledError")
             dashboard_state.request_errored(request_id, "Request cancelled")
+
+
+async def _stop_codex_stream_process(proc: asyncio.subprocess.Process) -> None:
+    """Stop and reap a request, including children launched by CLI wrappers."""
+    with anyio.CancelScope(shield=True):
+        with suppress(ProcessLookupError):
+            if os.name == "posix":
+                os.killpg(proc.pid, signal.SIGKILL)
+            elif proc.returncode is None:
+                proc.kill()
+        await proc.wait()
 
 
 async def stream_codex_cli(
@@ -2282,9 +2294,8 @@ async def stream_codex_cli(
         model=model,
         choices=[StreamChoice(delta=DeltaMessage(role="assistant", content=""))],
     )
-    yield f"data: {initial_chunk.model_dump_json()}\n\n"
-
     try:
+        yield f"data: {initial_chunk.model_dump_json()}\n\n"
         acquire_start = time.monotonic()
         await asyncio.wait_for(semaphore.acquire(), timeout=CODEX_TIMEOUT)
         acquired = True
@@ -2308,6 +2319,7 @@ async def stream_codex_cli(
                     output_schema=schema_path,
                     strict=strict,
                 ),
+                start_new_session=os.name == "posix",
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
@@ -2454,9 +2466,8 @@ async def stream_codex_cli(
         yield f"data: {final_chunk.model_dump_json()}\n\n"
         yield "data: [DONE]\n\n"
     except asyncio.TimeoutError:
-        if proc is not None and proc.returncode is None:
-            proc.kill()
-            await proc.wait()
+        if proc is not None:
+            await _stop_codex_stream_process(proc)
         if (
             session_logger.acquire_ms is None
             and acquire_ms is not None
@@ -2480,9 +2491,8 @@ async def stream_codex_cli(
         yield "data: [DONE]\n\n"
         return
     except Exception as e:
-        if proc is not None and proc.returncode is None:
-            proc.kill()
-            await proc.wait()
+        if proc is not None:
+            await _stop_codex_stream_process(proc)
         tb = traceback.format_exc()
         logging.error(f"[{request_id}] Codex {type(e).__name__}: {e}")
         session_logger.log_error(
@@ -2500,12 +2510,22 @@ async def stream_codex_cli(
         yield "data: [DONE]\n\n"
         return
     finally:
-        if stderr_task is not None and not stderr_task.done():
-            stderr_task.cancel()
-        if acquired:
-            semaphore.release()
         if not _dashboard_handled:
+            session_logger.log_error("Request cancelled", exception_type="CancelledError")
             dashboard_state.request_errored(request_id, "Request cancelled")
+        try:
+            # Starlette cancels the stream's AnyIO scope on client disconnect.
+            # Shield cleanup so the child is reaped before its slot is reused.
+            with anyio.CancelScope(shield=True):
+                if proc is not None:
+                    await _stop_codex_stream_process(proc)
+                if stderr_task is not None:
+                    stderr_task.cancel()
+                    with suppress(asyncio.CancelledError):
+                        await stderr_task
+        finally:
+            if acquired:
+                semaphore.release()
 
 
 @app.post("/api/v1/chat/completions")
@@ -2557,7 +2577,7 @@ async def chat_completions(request: ChatCompletionRequest):
         async def stream_with_logging():
             try:
                 if model_resolution.provider == "codex":
-                    async for chunk in stream_codex_cli(
+                    provider_stream = stream_codex_cli(
                         prompt,
                         request.model,
                         request_id,
@@ -2567,28 +2587,31 @@ async def chat_completions(request: ChatCompletionRequest):
                         reasoning_effort=codex_reasoning_effort,
                         output_schema=codex_output_schema,
                         strict=codex_strict,
-                    ):
-                        yield chunk
+                    )
                 elif model_resolution.provider == "claudecode":
-                    async for chunk in stream_claude_sdk(
+                    provider_stream = stream_claude_sdk(
                         prompt,
                         request.model,
                         request_id,
                         session_logger,
                         request.tools,
                         messages=dash_messages,
-                    ):
-                        yield chunk
+                    )
                 else:
-                    async for chunk in stream_openrouter_api(
+                    provider_stream = stream_openrouter_api(
                         request,
                         model_resolution.model,
                         request_id,
                         session_logger,
                         messages=dash_messages,
-                    ):
+                    )
+                async with aclosing(provider_stream):
+                    async for chunk in provider_stream:
                         yield chunk
             finally:
+                if session_logger.finish_reason is None and session_logger.error is None:
+                    session_logger.log_error("Request cancelled", exception_type="CancelledError")
+                    dashboard_state.request_errored(request_id, "Request cancelled")
                 session_logger.write(
                     request.messages,
                     request.stream,

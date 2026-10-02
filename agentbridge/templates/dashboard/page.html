@@ -815,7 +815,9 @@
                 if (!selectedId || !window.htmx) return;
                 var row = findRequestRow(selectedId);
                 markSelected(row, { scroll: options.scroll });
-                if (detailLoadedId !== selectedId) {
+                var finishedWhileStreaming = row && !row.classList.contains('request-row-active') &&
+                    document.querySelector('#detail .live-stream');
+                if (detailLoadedId !== selectedId || finishedWhileStreaming) {
                     window.htmx.ajax('GET', '/dashboard/request/' + selectedId, '#detail');
                     detailLoadedId = selectedId;
                 }
@@ -872,15 +874,23 @@
                 requestAnimationFrame(function() {
                     applyFilter();
                     if (selectedId) {
-                        markSelected(findRequestRow(selectedId), { scroll: false });
+                        loadSelectedDetail({ scroll: false });
                     } else {
                         loadDefaultRequest();
                     }
                 });
             });
 
+            document.body.addEventListener('htmx:responseError', function(e) {
+                if (e.detail.target && e.detail.target.id === 'detail' && e.detail.xhr.status === 404) {
+                    e.detail.target.innerHTML = '<div class="detail-empty"><div><h3>Request not found</h3><p class="empty-state">Choose another request from Monitor.</p></div></div>';
+                }
+            });
+
             document.body.addEventListener('htmx:afterSettle', function(e) {
-                if (e.detail.target && e.detail.target.id === 'request-list' && selectedId) {
+                if (e.detail.target && e.detail.target.id === 'detail' && selectedId) {
+                    loadSelectedDetail({ scroll: false });
+                } else if (e.detail.target && e.detail.target.id === 'request-list' && selectedId) {
                     loadSelectedDetail({ scroll: true });
                 } else if (e.detail.target && e.detail.target.id === 'request-list' && !selectedId) {
                     setTimeout(loadDefaultRequest, 20);

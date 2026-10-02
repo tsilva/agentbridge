@@ -419,7 +419,12 @@ class TestCodexHelpers:
 
     @pytest.mark.parametrize(
         ("model", "expected"),
-        [("gpt-6-astra", "low"), ("gpt-5.6-sol", "high"), ("gpt-5.4-mini", "high")],
+        [
+            ("gpt-6.1-sol", "high"),
+            ("gpt-6-astra", "low"),
+            ("gpt-5.6-sol", "high"),
+            ("gpt-5.4-mini", "high"),
+        ],
     )
     async def test_image_generation_uses_model_reasoning_default(self, model, expected):
         generated = _png_bytes()
@@ -563,10 +568,11 @@ class TestCodexHelpers:
 
         assert _resolve_codex_reasoning_effort(request, resolution) == "high"
 
-    def test_gpt56_sol_defaults_to_high_reasoning_effort(self):
-        """gpt-5.6-sol Codex requests default to high reasoning."""
+    @pytest.mark.parametrize("model", ["gpt-6.1-sol", "gpt-5.6-sol"])
+    def test_sol_defaults_to_high_reasoning_effort(self, model):
+        """Sol Codex requests use their catalog reasoning default."""
         request = ChatCompletionRequest(
-            model="codex/gpt-5.6-sol",
+            model=f"codex/{model}",
             messages=[Message(role="user", content="Hello")],
         )
         resolution = resolve_model_request(request.model)
@@ -1187,3 +1193,138 @@ class TestErrorResponseFormat:
         assert "message" in data["error"]
         assert "type" in data["error"]
         assert data["error"]["code"] == "model_not_found"
+
+
+@pytest.mark.parametrize(
+    "model", ["codex/gpt-6.1-sol", "claudecode/sonnet", "openrouter/openai/gpt-4o"]
+)
+async def test_stream_closed_after_first_chunk_is_saved_as_cancelled(model, monkeypatch, tmp_path):
+    """Closing at the outer yield must close the provider before saving its log."""
+    import asyncio
+
+    from agentbridge.server import chat_completions
+
+    monkeypatch.setenv("LOG_DIR", str(tmp_path))
+    request = ChatCompletionRequest(model=model, messages=[Message(role="user", content="test")],
+                                    stream=True)
+    response = await chat_completions(request)
+    request_id = response.headers["x-request-id"]
+    iterator = response.body_iterator
+    assert '"role":"assistant"' in await anext(iterator)
+    assert request_id in {r["request_id"] for r in dashboard_state.get_active_requests()}
+    await iterator.aclose()
+    assert request_id not in {r["request_id"] for r in dashboard_state.get_active_requests()}
+    log_path = tmp_path / f"{request_id}.json"
+    for _ in range(100):
+        try:
+            log = json.loads(log_path.read_text())
+            break
+        except (FileNotFoundError, json.JSONDecodeError):
+            await asyncio.sleep(0.01)
+    else:
+        pytest.fail("Cancelled session log was not written")
+    assert log["error"] == "Request cancelled"
+    assert log["exception_type"] == "CancelledError"
+    assert log["finish_reason"] is None
+
+
+@pytest.mark.parametrize("cancellation", ["asyncio", "anyio"])
+async def test_cancelled_codex_stream_reaps_child_and_releases_slot(
+    cancellation, monkeypatch, tmp_path
+):
+    """Both task cancellation and an HTTP disconnect must stop the running child."""
+    import asyncio
+    import sys
+
+    import anyio
+
+    from agentbridge.server import SessionLogger, stream_codex_cli
+
+    real_spawn = asyncio.create_subprocess_exec
+    spawned = asyncio.Event()
+    semaphore = asyncio.Semaphore(1)
+    process = None
+    cancel_scope = None
+    child_pid_path = tmp_path / "child-pid"
+    wrapper = (
+        "import pathlib, subprocess, sys, time; "
+        "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)']); "
+        f"pathlib.Path({str(child_pid_path)!r}).write_text(str(child.pid)); "
+        "time.sleep(60)"
+    )
+
+    async def spawn(*args, **kwargs):
+        nonlocal process
+        process = await real_spawn(sys.executable, "-c", wrapper, **kwargs)
+        spawned.set()
+        return process
+
+    monkeypatch.setattr("agentbridge.server.asyncio.create_subprocess_exec", spawn)
+    monkeypatch.setattr("agentbridge.server._codex_binary", lambda: "/bin/codex")
+    monkeypatch.setattr("agentbridge.server._get_codex_semaphore", lambda: semaphore)
+    logger = SessionLogger("test-cancelled-child", "codex/gpt-6.1-sol", store=False)
+    stream = stream_codex_cli("test", logger.model, logger.request_id, logger)
+    await anext(stream)
+
+    async def consume():
+        nonlocal cancel_scope
+        if cancellation == "anyio":
+            with anyio.CancelScope() as scope:
+                cancel_scope = scope
+                await anext(stream)
+        else:
+            await anext(stream)
+
+    task = asyncio.create_task(consume())
+    await asyncio.wait_for(spawned.wait(), timeout=5)
+    for _ in range(100):
+        if child_pid_path.exists() and child_pid_path.read_text():
+            break
+        await asyncio.sleep(0.01)
+    else:
+        pytest.fail("Codex wrapper child did not start")
+    child_pid = int(child_pid_path.read_text())
+    if cancellation == "anyio":
+        cancel_scope.cancel()
+        await asyncio.wait_for(task, timeout=5)
+    else:
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(task, timeout=5)
+    assert process.returncode is not None
+    for _ in range(100):
+        try:
+            os.kill(child_pid, 0)
+        except ProcessLookupError:
+            break
+        await asyncio.sleep(0.01)
+    else:
+        pytest.fail("Codex wrapper child survived cancellation")
+    assert not semaphore.locked()
+    assert logger.error == "Request cancelled"
+    assert logger.exception_type == "CancelledError"
+    assert logger.request_id not in {r["request_id"] for r in dashboard_state.get_active_requests()}
+
+
+async def test_completed_stream_is_not_saved_as_cancelled(monkeypatch):
+    """Normal completion retains the provider's successful finish reason."""
+    from agentbridge.server import chat_completions
+
+    saved_logger = None
+
+    async def completed(prompt, model, request_id, logger, *args, **kwargs):
+        nonlocal saved_logger
+        saved_logger = logger
+        logger.log_finish("stop")
+        yield "data: [DONE]\n\n"
+
+    monkeypatch.setattr("agentbridge.server.stream_codex_cli", completed)
+    response = await chat_completions(ChatCompletionRequest(
+        model="codex/gpt-6.1-sol", messages=[Message(role="user", content="test")],
+        stream=True, store=False,
+    ))
+    with patch("agentbridge.server.SessionLogger.write") as write:
+        assert [chunk async for chunk in response.body_iterator] == ["data: [DONE]\n\n"]
+        write.assert_called_once()
+    assert saved_logger.error is None
+    assert saved_logger.finish_reason == "stop"

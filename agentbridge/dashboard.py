@@ -123,7 +123,9 @@ class DashboardState:
             try:
                 q.put_nowait({"type": "done"})
             except asyncio.QueueFull:
-                pass  # Drop for slow consumers
+                # Completion must reach slow consumers so they can load the saved response.
+                q.get_nowait()
+                q.put_nowait({"type": "done"})
         self._notify()
 
     def request_errored(self, request_id: str, error: str) -> None:
@@ -134,7 +136,8 @@ class DashboardState:
             try:
                 q.put_nowait({"type": "error", "error": error})
             except asyncio.QueueFull:
-                pass  # Drop for slow consumers
+                q.get_nowait()
+                q.put_nowait({"type": "error", "error": error})
         self._notify()
 
     def get_active_requests(self) -> list[dict]:
@@ -144,12 +147,16 @@ class DashboardState:
         """Return the number of requests currently tracked as in flight."""
         return len(self._active)
 
-    def subscribe(self, request_id: str) -> asyncio.Queue | None:
+    def subscribe(self, request_id: str, *, offset: int | None = None) -> asyncio.Queue | None:
         req = self._active.get(request_id)
         if req is None:
             return None
         q: asyncio.Queue = asyncio.Queue(maxsize=100)
         req._subscribers.append(q)
+        if offset is not None:
+            backlog = req.buffered_text[max(0, offset):]
+            if backlog:
+                q.put_nowait({"type": "chunk", "text": backlog})
         return q
 
     def unsubscribe(self, request_id: str, queue: asyncio.Queue) -> None:
@@ -169,7 +176,7 @@ class DashboardState:
 def _sse_data_lines(text: str) -> str:
     """Return text formatted as SSE data lines."""
     if "\n" in text:
-        return "\n".join(f"data: {line}" for line in text.splitlines())
+        return "\n".join(f"data: {line}" for line in text.split("\n"))
     return f"data: {text}"
 
 
@@ -306,7 +313,7 @@ def create_dashboard_router(
             "chat.html",
             {
                 "available_models": AVAILABLE_MODELS,
-                "default_model": "claudecode/sonnet",
+                "default_model": "codex/gpt-6.1-sol",
                 "active_view": "chat",
             },
         )
@@ -500,10 +507,10 @@ def create_dashboard_router(
         return FileResponse(file_path)
 
     @router.get("/dashboard/stream/{request_id}")
-    async def dashboard_stream(request_id: str):
+    async def dashboard_stream(request_id: str, offset: int = 0):
         """SSE endpoint for live token streaming."""
         _validate_request_id(request_id)
-        queue = state.subscribe(request_id)
+        queue = state.subscribe(request_id, offset=offset)
         if queue is None:
             raise HTTPException(status_code=404, detail="Request not active")
 

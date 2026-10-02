@@ -103,8 +103,16 @@ Every request requires a model with one of these provider namespaces:
 | `codex/<model>` | Model ID passed directly to Codex CLI |
 | `openrouter/<provider>/<model>` | Provider and model ID passed to the official OpenRouter Python SDK |
 
+The dashboard chat defaults to `codex/gpt-6.1-sol`; a previously selected model
+is restored when returning to an existing chat. Monitor error cards use Refresh
+to reload saved request details; chat error cards use Retry to resend the failed request,
+including after navigating away or reloading. Chat drafts are preserved within the browser
+session. Enter sends a message; Shift+Enter or Alt+Enter inserts a newline. Interrupted
+streams are recorded as cancelled requests in Monitor, and Codex subprocesses are stopped.
+Incomplete or malformed response streams show a retryable error and leave chat history unchanged.
+
 Codex chat defaults to low reasoning effort for `gpt-6-astra` and high for
-`gpt-5.6-sol` and `gpt-5.5`; requests can override this. Astra image generation
+`gpt-6.1-sol`, `gpt-5.6-sol`, and `gpt-5.5`; requests can override this. Astra image generation
 also uses low reasoning effort.
 
 With the OpenAI Python SDK installed, connect using any placeholder API key:
@@ -154,6 +162,7 @@ uv build                                                # build wheel and source
 
 - The server listens on `127.0.0.1:8082` by default and accepts any placeholder client API key.
 - Public routes include `POST /api/v1/chat/completions`, `POST /api/v1/images`, `GET /api/v1/models`, `GET /api/v1/capabilities`, `GET /health`, `/dashboard`, and `/dashboard/chat`.
+- Monitor live text uses `GET /dashboard/stream/{request_id}`. Its optional `offset` counts already-rendered characters; buffered text after that offset is replayed before new chunks.
 - `GET /health` includes safe operator status used by the menu-bar app: version, start time, uptime, configured workers, active requests, and pool state when initialized.
 - Claude clients are created lazily, reused by model, and capped by the worker count. Claude sessions do not load filesystem settings and run with built-in tools disabled.
 - Codex runs one ephemeral `codex exec` process per request in a temporary directory with read-only sandboxing, no approvals, and project rules ignored. Multimodal structured-output calls also ignore user config and disable execution and image-generation tools. Native image calls use the same strict profile, keep execution disabled, and enable the image-generation capability needed for the edit.
