@@ -107,7 +107,7 @@ def next_version(_: argparse.Namespace) -> None:
     releases = fetch_pypi().get("releases", {})
     if not isinstance(releases, dict):
         raise SystemExit("unexpected PyPI releases payload")
-    while releases.get(candidate):
+    while releases.get(candidate) or tag_exists(candidate):
         major, minor, patch = parse_version(candidate)
         candidate = f"{major}.{minor}.{patch + 1}"
     print(candidate)
@@ -127,10 +127,12 @@ def tag_exists(version: str) -> bool:
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
+    if remote.returncode not in (0, 2):
+        raise SystemExit("could not check release tags on origin")
     return local.returncode == 0 or remote.returncode == 0
 
 
-def check_version(version: str) -> None:
+def check_metadata(version: str) -> None:
     parse_version(version)
     project = project_metadata()
     actual = {
@@ -154,11 +156,36 @@ def check_version(version: str) -> None:
             for key, value in mismatches.items()
         )
         raise SystemExit(f"release metadata mismatch: {details}")
+    print(json.dumps(actual, indent=2))
+
+
+def check_version(version: str) -> None:
+    check_metadata(version)
     if pypi_files(version):
         raise SystemExit(f"{PACKAGE_NAME}=={version} already exists on PyPI")
     if tag_exists(version):
         raise SystemExit(f"v{version} already exists locally or on origin")
-    print(json.dumps(actual, indent=2))
+
+
+def ci_metadata(args: argparse.Namespace) -> None:
+    version = project_version()
+    if args.require_unused:
+        check_version(version)
+    else:
+        check_metadata(version)
+
+
+def validate(_: argparse.Namespace) -> None:
+    """Dispatch committed main; do not build or inspect dirty local metadata."""
+    run(["gh", "auth", "status"])
+    run(["git", "fetch", "origin", "main"])
+    source_sha = run(["git", "rev-parse", "origin/main"], capture=True)
+    run([
+        "gh", "workflow", "run", "release.yml", "--ref", "main",
+        "-f", "publish=false", "-f", "attach_macos=false",
+    ])
+    print(f"Expected source SHA: {source_sha}")
+    print("Monitor only the workflow_dispatch run on main with this headSha.")
 
 
 def sha256(path: Path) -> str:
@@ -308,6 +335,20 @@ def smoke_wheel(wheel: Path, version: str) -> None:
         run([str(installed_python), "-c", code])
 
 
+def audit_dist(args: argparse.Namespace) -> None:
+    version = project_version()
+    check_metadata(version)
+    output = Path(args.directory)
+    wheels = sorted(output.glob("*.whl"))
+    sdists = sorted(output.glob("*.tar.gz"))
+    artifacts = [path for path in output.iterdir() if path.name != ".gitignore"]
+    if len(wheels) != 1 or len(sdists) != 1 or len(artifacts) != 2:
+        raise SystemExit("expected exactly one wheel and one sdist")
+    results = [audit_wheel(wheels[0], version), audit_sdist(sdists[0], version)]
+    smoke_wheel(wheels[0], version)
+    print(json.dumps({"package": PACKAGE_NAME, "version": version, "artifacts": results}, indent=2))
+
+
 def preflight_macos_app(version: str) -> dict[str, object]:
     if sys.platform != "darwin":
         raise SystemExit("the AgentBridge release preflight requires macOS for app validation")
@@ -430,6 +471,17 @@ def main() -> None:
     preflight_parser = commands.add_parser("preflight")
     preflight_parser.add_argument("--version", required=True)
     preflight_parser.set_defaults(func=preflight)
+
+    validate_parser = commands.add_parser("validate")
+    validate_parser.set_defaults(func=validate)
+
+    metadata_parser = commands.add_parser("ci-metadata")
+    metadata_parser.add_argument("--require-unused", action="store_true")
+    metadata_parser.set_defaults(func=ci_metadata)
+
+    audit_parser = commands.add_parser("audit-dist")
+    audit_parser.add_argument("--directory", default="dist")
+    audit_parser.set_defaults(func=audit_dist)
 
     wait_parser = commands.add_parser("wait-pypi")
     wait_parser.add_argument("--version", required=True)

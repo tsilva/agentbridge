@@ -13,8 +13,9 @@ project's adapter; they retain its invocation default and required gates.
 If the shared skill is unavailable, stop and report the missing dependency.
 
 A bare `$build-release` or `/build-release` invocation requests the full
-publication flow below. An explicitly local build or verification request uses
-only the corresponding non-publishing checks.
+publication flow below. Normal publication and validation build exclusively in
+GitHub Actions. The operator needs Python 3.11+, Git, `gh`, and `uv` only for
+version/lockfile preparation; no local Swift, Xcode, or application build is required.
 
 Use the repository-owned GitHub Actions workflow and PyPI Trusted Publishing.
 Do not create a local tag or upload with local credentials: pushing a new
@@ -55,20 +56,20 @@ refresh the lockfile mechanically:
 uv lock
 ```
 
-3. Run the deterministic release preflight with the exact version:
+3. Check metadata and patch formatting without compiling locally:
 
 ```bash
-python3 .codex/skills/build-release/scripts/release_build.py preflight --version <version>
+python3 .codex/skills/build-release/scripts/release_build.py ci-metadata --require-unused
+git diff --check
 ```
 
-The preflight requires macOS. It checks consistent project and lock metadata, an
-unused PyPI version and tag, clean patch formatting, a frozen lock, Python 3.12
-and 3.13 tests, Ruff, Swift tests, a self-contained app/DMG build for the current
-Mac architecture, app signature and embedded-runtime smoke tests, wheel and
-sdist audits, and a wheel installation smoke test. CI builds the arm64 macOS
-artifact with an ad-hoc signature. Stop at the exact failed gate.
+Actions checks the frozen lock, Python 3.12/3.13 tests, dependency audit, Ruff,
+secret scan, Swift tests, wheel/sdist contents and metadata, an isolated wheel
+installation, and the arm64 app/DMG signature, embedded runtime, and checksum.
+Both package and macOS gates must pass before PyPI or GitHub publication.
+Stop at the exact failed gate.
 
-4. Review and publish the release commit:
+4. Review and publish the release commit using the shared `$push` procedure:
 
 ```bash
 git diff --check
@@ -94,6 +95,34 @@ python3 .codex/skills/build-release/scripts/release_build.py wait-pypi --version
 
 Require `AgentBridge-<version>-macos-arm64.dmg` and its `.sha256` file on the
 `v<version>` GitHub Release, alongside the Python distributions.
+Confirm the tag resolves to the pushed release SHA and download the assets to
+verify their checksums. Do not infer publication from a successful validation run.
+
+## Validation without publication
+
+Validate committed `origin/main` in Actions without a version bump or local build:
+
+```bash
+python3 .codex/skills/build-release/scripts/release_build.py validate
+```
+
+This may run with a dirty local worktree: only committed remote source is tested.
+Monitor the `workflow_dispatch` run on `main` at the helper's printed full SHA;
+stop if its `headSha` differs. Require both Python and macOS build jobs, download
+`python-package-<sha>` and `macos-app-arm64-<sha>`, and check the DMG checksum.
+The run must skip `publish`, `release`, and `attach-macos`. Report that no new
+release was published.
+
+For an explicitly requested local build, use the retained macOS-only helper:
+
+```bash
+python3 .codex/skills/build-release/scripts/release_build.py preflight --version <unused-version>
+```
+
+This local preflight builds and tests locally and requires an unused version;
+never run it as part of normal `$build-release` publication or Actions validation.
+
+## Missing macOS assets
 
 If an existing release is missing only its macOS assets, attach them without
 republishing Python distributions:

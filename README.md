@@ -196,7 +196,12 @@ for the `agentbridge-cli` project. The publisher is scoped to owner `tsilva`,
 repository `agentbridge`, workflow `release.yml`, and environment `pypi`; no
 PyPI API token is required. GitHub Releases contain the Python distributions
 plus an ad-hoc-signed arm64 macOS DMG and SHA-256 checksum. The DMG is not
-Apple-notarized and requires no Apple Developer credentials. Releases
+Apple-notarized and requires no Apple Developer credentials. Release
+and validation builds run in GitHub Actions, including Python package audits
+and macOS application checks. `$build-release` prepares version metadata locally
+and monitors Actions; it does not require a local application build. A manual
+dispatch with `publish=false` and `attach_macos=false` builds both artifact sets
+without publishing them. Releases
 through `0.1.10` remain available under the previous `agentbridge-py`
 distribution name.
 
