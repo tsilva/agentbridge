@@ -41,6 +41,14 @@ jobs:
         id: publish
         shell: bash
         run: |
+          if [[ "${{ github.ref }}" != "refs/heads/main" ]]; then
+            echo "Release dispatches require main" >&2
+            exit 1
+          fi
+          if [[ "${{ inputs.publish }}" == "true" && "${{ inputs.attach_macos }}" == "true" ]]; then
+            echo "Choose publication or macOS recovery, not both" >&2
+            exit 1
+          fi
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "should-publish=${{ inputs.publish }}" >> "$GITHUB_OUTPUT"
           elif git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" | grep -qx "pyproject.toml"; then
@@ -67,12 +75,14 @@ jobs:
           cache-dependency-glob: "uv.lock"
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
+      - name: Check frozen lock metadata
+        run: uv lock --check
       - name: Install dependencies
         run: uv sync --frozen --extra test --python ${{ matrix.python-version }}
       - name: Audit dependencies
         run: uv run --frozen --extra test --python ${{ matrix.python-version }} pip-audit
       - name: Lint
-        run: uv run --frozen --extra test --python ${{ matrix.python-version }} ruff check agentbridge tests
+        run: uv run --frozen --extra test --python ${{ matrix.python-version }} ruff check agentbridge tests .codex/skills/build-release/scripts/release_build.py
       - name: Run tests
         run: uv run --frozen --extra test --python ${{ matrix.python-version }} pytest -q
 
@@ -83,6 +93,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
       - name: Run gitleaks
         uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
@@ -102,13 +113,13 @@ jobs:
 
   build:
     needs: [changes, test, pii-scan, macos-test]
-    if: needs.changes.outputs.should-publish == 'true'
+    if: needs.changes.outputs.should-publish == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: read
     outputs:
-      publish: ${{ steps.check-version.outputs.tag_exists == 'false' }}
+      publish: ${{ needs.changes.outputs.should-publish == 'true' && steps.check-version.outputs.tag_exists == 'false' }}
       tag: ${{ steps.check-version.outputs.tag }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -141,60 +152,22 @@ jobs:
           echo "tag_exists=${tag_exists}" >> "$GITHUB_OUTPUT"
           echo "Version ${version} maps to ${tag}; tag_exists=${tag_exists}"
       - name: Setup uv
-        if: steps.check-version.outputs.tag_exists == 'false'
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
+      - name: Install Python 3.12
+        run: uv python install 3.12
+      - name: Validate release metadata
+        run: python .codex/skills/build-release/scripts/release_build.py ci-metadata
+      - name: Require an unused publication version
+        if: needs.changes.outputs.should-publish == 'true' && steps.check-version.outputs.tag_exists == 'false'
+        run: python .codex/skills/build-release/scripts/release_build.py ci-metadata --require-unused
       - name: Build package
-        if: steps.check-version.outputs.tag_exists == 'false'
         run: uv build
-      - name: Verify PyPI project metadata
-        if: steps.check-version.outputs.tag_exists == 'false'
-        shell: bash
-        run: |
-          python - <<'PY'
-          import email.parser
-          import glob
-          import tarfile
-          import tomllib
-          import zipfile
-
-          expected_name = "agentbridge-cli"
-          names = set()
-
-          for wheel in glob.glob("dist/*.whl"):
-              with zipfile.ZipFile(wheel) as archive:
-                  metadata_path = next(
-                      name
-                      for name in archive.namelist()
-                      if name.endswith(".dist-info/METADATA")
-                  )
-                  metadata = archive.read(metadata_path).decode()
-                  names.add(email.parser.Parser().parsestr(metadata)["Name"])
-
-          for sdist in glob.glob("dist/*.tar.gz"):
-              with tarfile.open(sdist, "r:gz") as archive:
-                  pyproject_path = next(
-                      member
-                      for member in archive.getmembers()
-                      if member.name.endswith("/pyproject.toml")
-                  )
-                  pyproject_file = archive.extractfile(pyproject_path)
-                  if pyproject_file is None:
-                      raise RuntimeError(f"Could not read {pyproject_path.name}")
-                  pyproject = tomllib.loads(pyproject_file.read().decode())
-                  names.add(pyproject["project"]["name"])
-
-          if names != {expected_name}:
-              raise RuntimeError(
-                  f"Expected built project name {expected_name!r}, got {sorted(names)!r}"
-              )
-
-          print(f"Verified PyPI project name: {expected_name}")
-          PY
+      - name: Audit distributions and installed wheel
+        run: python .codex/skills/build-release/scripts/release_build.py audit-dist
       - name: Store package artifacts
-        if: steps.check-version.outputs.tag_exists == 'false'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: python-package-${{ github.sha }}
@@ -205,9 +178,8 @@ jobs:
   macos-app:
     needs: [build]
     if: >-
-      always() &&
-      (needs.build.outputs.publish == 'true' ||
-      (github.event_name == 'workflow_dispatch' && inputs.attach_macos == true))
+      needs.build.result == 'success' &&
+      (needs.build.outputs.publish == 'true' || github.event_name == 'workflow_dispatch')
     strategy:
       fail-fast: false
       matrix:
@@ -233,6 +205,9 @@ jobs:
         run: scripts/build_macos_app.sh
       - name: Verify embedded application
         run: scripts/verify_macos_app.sh "build/macos/${{ matrix.architecture }}/AgentBridge.app"
+      - name: Verify disk image checksum
+        working-directory: build/macos/${{ matrix.architecture }}
+        run: shasum -a 256 -c ./*.dmg.sha256
       - name: Store macOS artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -267,11 +242,12 @@ jobs:
           path: dist/
           merge-multiple: true
       - name: Create GitHub release
-        run: gh release create "$TAG" --title "$TAG" --generate-notes dist/*
+        run: gh release create "$TAG" --target "$RELEASE_SHA" --title "$TAG" --generate-notes dist/*
         env:
           GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.build.outputs.tag }}
+          RELEASE_SHA: ${{ github.sha }}
 
   attach-macos:
     needs: [macos-app]
@@ -312,7 +288,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   publish:
-    needs: [build]
+    needs: [build, macos-app]
     if: needs.build.outputs.publish == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10

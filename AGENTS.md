@@ -56,6 +56,8 @@ Browser testing, deterministic fixtures, and regression verification.
 
 Use the project-level `$build-release` skill for version selection, release
 validation, publishing, GitHub Release creation, and PyPI verification.
+Normal release and validation builds run in GitHub Actions; use local compilation
+only when explicitly requested. Validation dispatches never publish.
 
 Use the native Codex Desktop in-app Browser for dashboard verification, and do
 not disturb an existing development server.
