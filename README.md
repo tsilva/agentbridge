@@ -187,7 +187,35 @@ count.
 | `LOG_DIR` | Moves session logs from the configuration directory's `logs/sessions/` |
 | `MAX_LOG_FILES` | Retains up to `1000` JSON session logs |
 | `OPENROUTER_API_KEY` | Required for OpenRouter requests |
+| `OPENROUTER_PROXY_URL` | Optional HTTP/HTTPS forward proxy URL for OpenRouter only; supports proxy authentication in the URL |
+| `OPENROUTER_CA_FILE` | Optional PEM CA certificate file to trust in addition to system certificates for OpenRouter only; supports `~` |
 | `OPENROUTER_SITE_URL`, `OPENROUTER_APP_NAME` | Optional OpenRouter attribution; app name defaults to `agentbridge` |
+
+### OpenRouter through a proxy
+
+Keep OpenRouter's normal API URL. Set the forward proxy separately in the process
+environment or `~/.config/agentbridge/.env`, then restart AgentBridge. These
+settings work with the CLI and the macOS app, for streaming and non-streaming
+requests. Existing configuration files can add the optional settings manually.
+
+```dotenv
+OPENROUTER_API_KEY=agent-vault-placeholder
+OPENROUTER_PROXY_URL=http://SESSION_PROXY_AUTH@127.0.0.1:PROXY_PORT
+OPENROUTER_CA_FILE=/absolute/path/to/proxy-ca.pem
+```
+
+Replace the proxy URL with the authenticated URL supplied for your session.
+Proxy authentication is separate from the placeholder OpenRouter API key. Keep
+the proxy session credential private and out of Git. The proxy must allow
+`POST /api/v1/chat/completions` on `openrouter.ai` and inject the real API key.
+TLS verification stays enabled. A proxy or certificate failure returns an error;
+AgentBridge does not retry through a direct connection.
+
+Leave `OPENROUTER_PROXY_URL` and `OPENROUTER_CA_FILE` unset to use the launcher's
+settings. Provider-specific settings override the corresponding standard settings
+for OpenRouter. Standard proxy variables can also affect other network clients in
+the process. Proxy configuration does not provide network isolation; enforced
+egress restrictions belong in the execution environment.
 
 ## Publishing
 

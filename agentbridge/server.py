@@ -9,12 +9,13 @@ import os
 import re
 import shutil
 import signal
+import ssl
 import stat
 import tempfile
 import time
 import traceback
 import urllib.parse
-from contextlib import aclosing, asynccontextmanager, suppress
+from contextlib import AsyncExitStack, aclosing, asynccontextmanager, suppress
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -22,6 +23,7 @@ from typing import Any
 from uuid import uuid4
 
 import anyio
+import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -1624,8 +1626,36 @@ def _openrouter_client_kwargs() -> dict[str, Any]:
     return kwargs
 
 
-def _openrouter_client():
-    """Create an OpenRouter SDK client."""
+def _openrouter_transport_kwargs() -> dict[str, Any]:
+    """Apply optional OpenRouter-only proxy and additional certificate trust."""
+    kwargs: dict[str, Any] = {}
+    proxy = os.environ.get("OPENROUTER_PROXY_URL")
+    if proxy:
+        try:
+            parsed = httpx.URL(proxy)
+            if parsed.scheme not in {"http", "https"} or not parsed.host:
+                raise ValueError
+        except (httpx.InvalidURL, ValueError):
+            raise RuntimeError(
+                "OPENROUTER_PROXY_URL must be an HTTP or HTTPS proxy URL."
+            ) from None
+        kwargs["proxy"] = proxy
+    ca_file = os.environ.get("OPENROUTER_CA_FILE")
+    if ca_file:
+        try:
+            context = ssl.create_default_context()
+            context.load_verify_locations(cafile=str(Path(ca_file).expanduser()))
+        except (OSError, ssl.SSLError):
+            raise RuntimeError(
+                "OPENROUTER_CA_FILE must point to a readable PEM CA certificate."
+            ) from None
+        kwargs["verify"] = context
+    return kwargs
+
+
+@asynccontextmanager
+async def _openrouter_client():
+    """Create and close SDK clients, including any custom proxy transports."""
     try:
         from openrouter import OpenRouter
     except ImportError as exc:
@@ -1633,7 +1663,20 @@ def _openrouter_client():
             "The openrouter SDK is required for openrouter/<model> requests. "
             "Install dependencies with `uv pip install -e .`."
         ) from exc
-    return OpenRouter(**_openrouter_client_kwargs())
+    kwargs = _openrouter_client_kwargs()
+    transport_kwargs = _openrouter_transport_kwargs()
+    async with AsyncExitStack() as stack:
+        if transport_kwargs:
+            kwargs["client"] = stack.enter_context(
+                httpx.Client(follow_redirects=True, **transport_kwargs)
+            )
+            kwargs["async_client"] = await stack.enter_async_context(
+                httpx.AsyncClient(follow_redirects=True, **transport_kwargs)
+            )
+        # The SDK treats supplied transports as caller-owned; the stack closes them.
+        sdk = stack.enter_context(OpenRouter(**kwargs))
+        await stack.enter_async_context(sdk)
+        yield sdk
 
 
 def _openrouter_payload(
@@ -1647,6 +1690,7 @@ def _openrouter_payload(
     payload["model"] = backend_model
     payload["stream"] = stream
     payload.pop("n", None)
+    payload.pop("store", None)
     reasoning_effort = payload.pop("reasoning_effort", None)
     if reasoning_effort and "reasoning" not in payload:
         payload["reasoning"] = {"effort": reasoning_effort}

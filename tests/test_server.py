@@ -646,11 +646,13 @@ class TestOpenRouterHelpers:
             messages=[Message(role="user", content="Hello")],
             n=1,
             reasoning_effort="high",
+            store=False,
         )
 
         payload = _openrouter_payload(request, "openai/gpt-5", stream=False)
 
         assert "n" not in payload
+        assert "store" not in payload
         assert "reasoning_effort" not in payload
         assert payload["reasoning"] == {"effort": "high"}
 

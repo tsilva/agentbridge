@@ -46,6 +46,7 @@ source = { editable = "." }
 dependencies = [
     { name = "claude-agent-sdk" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "jinja2" },
     { name = "openrouter" },
     { name = "pillow" },
@@ -64,6 +65,7 @@ test = [
 requires-dist = [
     { name = "claude-agent-sdk", specifier = ">=0.2.132" },
     { name = "fastapi", specifier = ">=0.141.1" },
+    { name = "httpx", specifier = ">=0.28.1,<0.29" },
     { name = "jinja2", specifier = ">=3.1.0" },
     { name = "openrouter", specifier = "==1.1.31" },
     { name = "pillow", specifier = ">=12.3.0" },

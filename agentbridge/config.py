@@ -12,6 +12,9 @@ DEFAULT_ENV_CONTENT = """# AgentBridge local configuration
 OPENROUTER_API_KEY=
 OPENROUTER_SITE_URL=
 OPENROUTER_APP_NAME=agentbridge
+# Optional forward proxy for OpenRouter requests only.
+OPENROUTER_PROXY_URL=
+OPENROUTER_CA_FILE=
 """
 
 def user_config_dir(*, create: bool = False) -> Path:
