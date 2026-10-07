@@ -39,7 +39,6 @@ from .config import (
 )
 from .dashboard import DashboardState, create_dashboard_router
 from .models import (
-    AVAILABLE_MODELS,
     CODEX_DEFAULT_REASONING_EFFORT_BY_MODEL,
     ChatCompletionChunk,
     ChatCompletionRequest,
@@ -64,6 +63,7 @@ from .models import (
     ToolCall,
     UnsupportedModelError,
     Usage,
+    available_models,
     resolve_model,
     resolve_model_request,
 )
@@ -2851,7 +2851,7 @@ async def list_models():
     return ModelList(
         data=[
             ModelInfo(id=m["slug"], owned_by=m.get("owned_by", "agentbridge"))
-            for m in AVAILABLE_MODELS
+            for m in available_models()
         ]
     )
 

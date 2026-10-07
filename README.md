@@ -101,9 +101,14 @@ Every request requires a model with one of these provider namespaces:
 | --- | --- |
 | `claudecode/<model>` | Claude Code: `opus`, `sonnet`, `haiku`, or a Claude slug containing one of those names |
 | `codex/<model>` | Model ID passed directly to Codex CLI |
+| `openrouter/default` | User's OpenRouter default; DeepSeek V4.1 Flash unless overridden |
 | `openrouter/<provider>/<model>` | Provider and model ID passed to the official OpenRouter Python SDK |
 
-The dashboard chat defaults to `codex/gpt-6.1-sol`; a previously selected model
+The dashboard chat defaults to `codex/gpt-6.1-sol`. Set `AGENTBRIDGE_DEFAULT_MODEL`
+in your user configuration to choose another default for new chats, such as
+`openrouter/default`. That alias uses `deepseek/deepseek-v4.1-flash` unless
+`OPENROUTER_DEFAULT_MODEL` is set to another upstream model. An explicit model in
+an API request always selects that provider and model. A previously selected model
 is restored when returning to an existing chat. Monitor error cards use Refresh
 to reload saved request details; chat error cards use Retry to resend the failed request,
 including after navigating away or reloading. Chat drafts are preserved within the browser
@@ -187,6 +192,8 @@ count.
 | `LOG_DIR` | Moves session logs from the configuration directory's `logs/sessions/` |
 | `MAX_LOG_FILES` | Retains up to `1000` JSON session logs |
 | `OPENROUTER_API_KEY` | Required for OpenRouter requests |
+| `OPENROUTER_DEFAULT_MODEL` | Upstream model for `openrouter/default`; defaults to `deepseek/deepseek-v4.1-flash` |
+| `AGENTBRIDGE_DEFAULT_MODEL` | Model selected for new dashboard chats; defaults to `codex/gpt-6.1-sol` |
 | `OPENROUTER_PROXY_URL` | Optional HTTP/HTTPS forward proxy URL for OpenRouter only; supports proxy authentication in the URL |
 | `OPENROUTER_CA_FILE` | Optional PEM CA certificate file to trust in addition to system certificates for OpenRouter only; supports `~` |
 | `OPENROUTER_SITE_URL`, `OPENROUTER_APP_NAME` | Optional OpenRouter attribution; app name defaults to `agentbridge` |

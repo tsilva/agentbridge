@@ -489,12 +489,24 @@ class TestDashboardPage:
 class TestDashboardChatPage:
     """Tests for GET /dashboard/chat."""
 
-    def test_default_model_is_available_and_selected(self):
+    def test_default_model_is_available_and_selected(self, monkeypatch):
         """A fresh chat uses the advertised Codex default."""
+        monkeypatch.delenv("AGENTBRIDGE_DEFAULT_MODEL", raising=False)
         resp = TestClient(_make_app()).get("/dashboard/chat")
         assert (
             '<option value="codex/gpt-6.1-sol" selected>codex/gpt-6.1-sol</option>'
         ) in resp.text
+
+    @pytest.mark.parametrize("model", [
+        "openrouter/default", "openrouter/deepseek/deepseek-v4.1-flash",
+        "openrouter/example/custom-model",
+    ])
+    def test_user_default_is_available_and_selected(self, monkeypatch, model):
+        monkeypatch.setenv("AGENTBRIDGE_DEFAULT_MODEL", model)
+        resp = TestClient(_make_app()).get("/dashboard/chat")
+        assert resp.status_code == 200
+        assert f'<option value="{model}" selected>{model}</option>' in resp.text
+
 
     def test_returns_chat_html(self):
         """Chat page includes attachment and error-detail UI."""

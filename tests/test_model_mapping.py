@@ -144,6 +144,26 @@ class TestCodexModels:
 class TestOpenRouterModels:
     """Tests for OpenRouter model routing."""
 
+    def test_openrouter_default_is_deepseek_flash(self, monkeypatch):
+        monkeypatch.delenv("OPENROUTER_DEFAULT_MODEL", raising=False)
+        result = resolve_model_request("openrouter/default")
+        assert result.provider == "openrouter"
+        assert result.model == "deepseek/deepseek-v4.1-flash"
+
+    def test_openrouter_default_respects_user_setting(self, monkeypatch):
+        monkeypatch.setenv("OPENROUTER_DEFAULT_MODEL", "openai/gpt-4o-mini")
+        assert resolve_model_request("openrouter/default").model == "openai/gpt-4o-mini"
+        assert resolve_model_request("openrouter/deepseek/deepseek-v4.1-flash").model == (
+            "deepseek/deepseek-v4.1-flash"
+        )
+        assert resolve_model_request("codex/gpt-6.1-sol").provider == "codex"
+
+    @pytest.mark.parametrize("model", ["gpt-4o-mini", "openai/", "/gpt-4o-mini", ""])
+    def test_invalid_openrouter_default_is_rejected(self, monkeypatch, model):
+        monkeypatch.setenv("OPENROUTER_DEFAULT_MODEL", model)
+        with pytest.raises(UnsupportedModelError):
+            resolve_model_request("openrouter/default")
+
     def test_resolve_openrouter_model(self):
         """openrouter/<provider>/<model> passes the provider model through."""
         result = resolve_model_request("openrouter/anthropic/claude-sonnet-4")

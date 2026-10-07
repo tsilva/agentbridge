@@ -12,8 +12,8 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
-from .config import session_log_dir
-from .models import AVAILABLE_MODELS
+from .config import default_chat_model, session_log_dir
+from .models import available_models
 
 logger = logging.getLogger(__name__)
 _REQUEST_ID_PATTERN = re.compile(r"chatcmpl-[a-f0-9]{8,32}")
@@ -312,8 +312,8 @@ def create_dashboard_router(
             request,
             "chat.html",
             {
-                "available_models": AVAILABLE_MODELS,
-                "default_model": "codex/gpt-6.1-sol",
+                "available_models": available_models(),
+                "default_model": default_chat_model(),
                 "active_view": "chat",
             },
         )

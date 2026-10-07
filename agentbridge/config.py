@@ -7,15 +7,29 @@ from pathlib import Path
 
 CONFIG_DIR_ENV = "AGENTBRIDGE_CONFIG_DIR"
 DEFAULT_POOL_SIZE = 1
+DEFAULT_CHAT_MODEL = "codex/gpt-6.1-sol"
+DEFAULT_OPENROUTER_MODEL = "deepseek/deepseek-v4.1-flash"
 DEFAULT_ENV_CONTENT = """# AgentBridge local configuration
 # Keep API keys on this machine only. Values in the process environment override this file.
 OPENROUTER_API_KEY=
 OPENROUTER_SITE_URL=
 OPENROUTER_APP_NAME=agentbridge
+OPENROUTER_DEFAULT_MODEL=deepseek/deepseek-v4.1-flash
+AGENTBRIDGE_DEFAULT_MODEL=codex/gpt-6.1-sol
 # Optional forward proxy for OpenRouter requests only.
 OPENROUTER_PROXY_URL=
 OPENROUTER_CA_FILE=
 """
+
+
+def openrouter_default_model() -> str:
+    """Return the user's upstream model for the openrouter/default alias."""
+    return os.environ.get("OPENROUTER_DEFAULT_MODEL", DEFAULT_OPENROUTER_MODEL).strip()
+
+
+def default_chat_model() -> str:
+    """Return the model selected for new dashboard chats."""
+    return os.environ.get("AGENTBRIDGE_DEFAULT_MODEL", DEFAULT_CHAT_MODEL).strip()
 
 def user_config_dir(*, create: bool = False) -> Path:
     """Return the user config directory, defaulting to ~/.config/agentbridge."""

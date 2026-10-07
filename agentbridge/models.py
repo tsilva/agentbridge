@@ -6,6 +6,8 @@ from typing import Annotated, Any, Literal, Union
 
 from pydantic import BaseModel, Field
 
+from .config import DEFAULT_OPENROUTER_MODEL, default_chat_model, openrouter_default_model
+
 
 # Tool-related types (OpenAI format)
 class FunctionDefinition(BaseModel):
@@ -222,6 +224,7 @@ CODEX_DEFAULT_REASONING_EFFORT_BY_MODEL: dict[str, ReasoningEffort] = {
 }
 
 OPENROUTER_EXAMPLE_SLUGS: set[str] = {
+    DEFAULT_OPENROUTER_MODEL,
     "anthropic/claude-opus-4",
     "anthropic/claude-sonnet-4",
     "openai/gpt-5",
@@ -242,6 +245,7 @@ _MODEL_PATTERN = re.compile(
 )
 # Available models for /api/v1/models endpoint.
 AVAILABLE_MODELS: list[dict[str, str]] = [
+    {"slug": "openrouter/default", "name": "OpenRouter default", "owned_by": "openrouter"},
     *[
         {
             "slug": f"claudecode/{name}",
@@ -310,7 +314,12 @@ def resolve_model_request(model: str) -> ModelResolution:
         return ModelResolution(provider="codex", model=provider_model)
 
     if provider_lower == "openrouter":
+        if provider_model_lower == "default":
+            provider_model = openrouter_default_model()
         if "/" not in provider_model:
+            raise UnsupportedModelError(model)
+        upstream_provider, upstream_model = provider_model.split("/", 1)
+        if not upstream_provider or not upstream_model:
             raise UnsupportedModelError(model)
         return ModelResolution(provider="openrouter", model=provider_model)
 
@@ -324,6 +333,16 @@ def resolve_model_request(model: str) -> ModelResolution:
 
     # Unknown model - raise error
     raise UnsupportedModelError(model)
+
+
+def available_models() -> list[dict[str, str]]:
+    """Include configured defaults without changing the shared model catalog."""
+    models = list(AVAILABLE_MODELS)
+    for slug in (f"openrouter/{openrouter_default_model()}", default_chat_model()):
+        resolution = resolve_model_request(slug)
+        if not any(model["slug"] == slug for model in models):
+            models.append({"slug": slug, "name": slug, "owned_by": resolution.provider})
+    return models
 
 
 def resolve_model(model: str) -> str:
