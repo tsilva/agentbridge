@@ -155,6 +155,10 @@ agentbridge                                             # start on 127.0.0.1:808
 agentbridge --port 8083                                  # choose another port
 agentbridge --workers 3                                  # set Claude pool and Codex concurrency to 3
 agentbridge --version                                    # print package and git version
+pnpm --dir frontend install --frozen-lockfile              # install frontend build tools
+pnpm --dir frontend check                               # validate Svelte components
+pnpm --dir frontend test                                # test chat state and retries
+pnpm --dir frontend build                               # rebuild packaged dashboard assets
 uv run --frozen --extra test pytest -q                    # run tests
 uv run --frozen --extra test ruff check agentbridge tests  # lint Python
 swift test --package-path macos                          # test the macOS app
@@ -166,8 +170,10 @@ uv build                                                # build wheel and source
 ## Notes
 
 - The server listens on `127.0.0.1:8082` by default and accepts any placeholder client API key.
-- Public routes include `POST /api/v1/chat/completions`, `POST /api/v1/images`, `GET /api/v1/models`, `GET /api/v1/capabilities`, `GET /health`, `/dashboard`, and `/dashboard/chat`.
-- Monitor live text uses `GET /dashboard/stream/{request_id}`. Its optional `offset` counts already-rendered characters; buffered text after that offset is replayed before new chunks.
+- Public routes include `POST /api/v1/chat/completions`, `POST /api/v1/images`, `POST /api/v1/embeddings`, `GET /api/v1/models`, `GET /api/v1/capabilities`, `GET /health`, `/dashboard`, and `/dashboard/chat`.
+- The web dashboard uses Svelte 5 with Vite. Source lives in `frontend/`; compiled assets in `agentbridge/static/dashboard/` ship with the Python package. Node 22.12+ and pnpm 10 are needed only to change the frontend. After frontend edits, run the frontend checks and build, and include the regenerated assets in the same change. The macOS companion remains a native SwiftUI app.
+- Dashboard data comes from `GET /dashboard/config`, `GET /dashboard/pool`, and `GET /dashboard/request/{request_id}` as JSON. `/dashboard/requests` and `/dashboard/pool/stream` send JSON SSE events. Log and attachment downloads keep their existing routes.
+- Monitor live text uses `GET /dashboard/stream/{request_id}`. Its optional `offset` counts already-rendered Unicode code points; buffered text after that offset is replayed before new chunks.
 - `GET /health` includes safe operator status used by the menu-bar app: version, start time, uptime, configured workers, active requests, and pool state when initialized.
 - Claude clients are created lazily, reused by model, and capped by the worker count. Claude sessions do not load filesystem settings and run with built-in tools disabled.
 - Codex runs one ephemeral `codex exec` process per request in a temporary directory with read-only sandboxing, no approvals, and project rules ignored. Multimodal structured-output calls also ignore user config and disable execution and image-generation tools. Native image calls use the same strict profile, keep execution disabled, and enable the image-generation capability needed for the edit.
@@ -247,3 +253,26 @@ distribution name.
 ## License
 
 [MIT](https://github.com/tsilva/agentbridge/blob/main/LICENSE)
+
+## Application gateway
+
+Applications use AgentBridge as their only model endpoint. Keep existing upstream
+models by adding the `openrouter/` namespace, for example
+`openrouter/google/gemini-3.8-flash`. Upstream credentials belong only to
+AgentBridge; clients never need an OpenRouter API key.
+
+- `POST /api/v1/chat/completions` preserves OpenRouter image-generation options,
+  generated images, and usage/cost metadata in non-streaming responses.
+- `POST /api/v1/embeddings` accepts `openrouter/*` embedding models and forwards
+  input and embedding options to OpenRouter.
+- `POST /api/v1/images` accepts `openrouter/*` image models as well as the bounded
+  native `codex/*` image contract. Codex still requires exactly one data URL
+  reference, one output, and `store=false`.
+- `GET /api/v1/openrouter/{path}` exposes only `models`, `credits`, `key`,
+  `endpoints/zdr`, and `models/{provider}/{model}/endpoints` metadata. These
+  requests use the gateway account, rather than a caller's personal account.
+
+Every upstream operation honors `OPENROUTER_PROXY_URL`, `OPENROUTER_CA_FILE`,
+and the configured timeout. Forward proxies must authorize the added API paths.
+Remote applications must configure a reachable AgentBridge deployment; loopback
+URLs refer to the application host itself.

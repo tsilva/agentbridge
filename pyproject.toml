@@ -22,7 +22,6 @@ dependencies = [
     "claude-agent-sdk>=0.2.132",
     "openrouter==1.1.31",
     "httpx>=0.28.1,<0.29",
-    "jinja2>=3.1.0",
     "pillow>=12.3.0",
 ]
 

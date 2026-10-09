@@ -14,8 +14,10 @@ packaged menu-bar application can use different runtimes.
    macOS, inspect the actual launchd job/plist when launchd owns the process.
    Do not assume a historical label such as `io.parsefood.agentbridge`.
 3. Preserve the installed artifact or package/metadata backup needed for rollback.
-   Build the checkout with `uv build`; identify the exact resulting wheel and
-   compare its templates/assets to source before installation.
+   After frontend changes, run the frontend checks and `pnpm --dir frontend build`
+   before `uv build`. Identify the exact resulting wheel and compare its
+   `agentbridge/static/dashboard/index.html` and referenced JavaScript/CSS to the
+   final frontend build. Preserve the packaged brand assets too.
 4. Confirm restart authorization from the current request or existing session.
    Check active requests immediately before maintenance. Wait for user work to
    finish; do not cancel unrelated requests just to speed up an audit. Preserve
@@ -45,7 +47,10 @@ server or start a competing instance on the same port.
 Poll `/health` in bounded intervals, sharing progress during a slow startup.
 Confirm a changed start time/PID and inspect startup logs if readiness fails.
 Navigate/reload the native browser after readiness. Verify installed source and
-served branding against the built artifact, then rerun the repaired interactions.
+served branding against the built artifact. Check the served dashboard HTML's
+asset filenames and asset bytes against the wheel; the shared HTML shell uses
+`Cache-Control: no-cache`, while assets with content hashes are immutable.
+Then rerun the repaired interactions.
 If real provider execution is in scope, send a short synthetic probe, inspect its
 saved completion, and confirm capacity returns to idle.
 

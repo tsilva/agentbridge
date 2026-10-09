@@ -59,11 +59,16 @@ For each candidate bug:
    disconnects, server startup, or browser attachment failures.
 2. Reduce it to a deterministic reproduction. Use an isolated fixture server for
    malformed streams, timing races, and error responses. Reuse the actual
-   dashboard router/templates/state with a temporary log directory, synthetic
-   data, and an OS-assigned port. Keep the active instance running.
+   dashboard router/state and packaged Svelte assets with a temporary log
+   directory, synthetic data, and an OS-assigned port. Build changed frontend
+   source before navigating to the fixture. Keep the active instance running.
 3. When fixes are requested, repair the cause and add a meaningful regression
    test for nontrivial failures. Relevant files include `agentbridge/dashboard.py`,
-   `server.py`, `models.py`, `templates/dashboard/`, and the dashboard/server tests.
+   `agentbridge/server.py`, `agentbridge/models.py`, `frontend/src/Chat.svelte`,
+   `Monitor.svelte`, `RequestDetail.svelte`, and `frontend/src/lib/`. Chat state
+   lives in `chat-state.svelte.js`; streaming, attachment conversion, and Markdown
+   helpers have separate modules. Tests live in `frontend/src/lib/*.test.js`
+   and the Python dashboard/server tests.
    Preserve the OpenAI response/error contract and saved-log schema. Update
    README when public behavior changes.
 4. Rerun the reproduction through the browser and the relevant tests. Inspect
@@ -77,18 +82,36 @@ For each candidate bug:
 
 ## Verify source and installed behavior
 
+The dashboard uses Svelte 5 and Vite. FastAPI serves the built shell and assets
+from `agentbridge/static/dashboard/` at `/dashboard` and `/dashboard/chat`.
+Dashboard configuration, pool status, and request details are JSON; request-list
+and pool SSE events carry JSON. Live token SSE remains plain text. Preserve the
+Unicode-code-point offset contract when reconnecting Monitor streams.
+
 Run the repository's required checks after application changes:
 
 ```bash
+pnpm --dir frontend install --frozen-lockfile
+pnpm --dir frontend check
+pnpm --dir frontend test
+pnpm --dir frontend build
 uv run --frozen --extra test pytest -q
 uv run --frozen --extra test ruff check agentbridge tests
 uv lock --check
 uv build
 ```
 
+Frontend work requires Node 22.12+ and pnpm 10; installed users do not need Node.
+Include regenerated packaged assets with frontend source changes. Check that
+the wheel's dashboard HTML references bundled JavaScript and CSS whose bytes
+match the final frontend build. The source distribution should include frontend
+source and its lockfile without `node_modules`.
+
 Check for skipped browser-client tests: `tests/test_dashboard_client.py` uses
-Node when available. Report skips as a coverage gap. If lock checking fails,
-diagnose project versus user-global uv configuration before changing the lock.
+Node to import frontend helper modules when available. The frontend test command
+also exercises chat state and retry behavior. Report skips as a coverage gap.
+If lock checking fails, diagnose project versus user-global uv configuration
+before changing the lock.
 Global package exemptions have previously caused a metadata mismatch; see
 [local installation and validation](references/local-install.md).
 

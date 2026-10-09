@@ -55,9 +55,15 @@ data. Drive the visible page for assertions about controls and rendering.
   zero-valued usage, error information, and final response against saved logs.
 - Stream newline-only chunks, trailing newlines, Unicode, and literal `<tag> &`
   text. The live response must preserve whitespace and escape HTML once.
+- Verify request-list and pool SSE events carry JSON, and configuration and
+  request-detail routes return JSON. Inspect their effects through the Svelte
+  UI rather than expecting server-rendered HTML fragments.
 - Reproduce the gap between rendering initial buffered text and subscribing to
   events. Newly buffered text must replay without duplicate initial content.
-  If offsets are used, include Unicode to catch mismatched counting units.
+  Offsets count Unicode code points; include emoji to catch JavaScript UTF-16
+  length mismatches.
+- Interrupt a live Monitor connection. Reconnection must reload the current
+  buffered snapshot before subscribing so replay does not duplicate tokens.
 - Complete a request after its live detail renders but before EventSource
   connects. Subsequent list updates must replace stale streaming details with
   the completed saved response.

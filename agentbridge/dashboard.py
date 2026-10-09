@@ -9,8 +9,7 @@ from pathlib import Path
 from typing import Callable
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
-from fastapi.templating import Jinja2Templates
+from fastapi.responses import FileResponse, StreamingResponse
 
 from .config import default_chat_model, session_log_dir
 from .models import available_models
@@ -186,7 +185,7 @@ def _validate_request_id(request_id: str) -> None:
         raise HTTPException(status_code=400, detail="Invalid request ID")
 
 
-TEMPLATES_DIR = Path(__file__).parent / "templates" / "dashboard"
+DASHBOARD_ASSETS_DIR = Path(__file__).parent / "static" / "dashboard"
 BRAND_ASSETS_DIR = Path(__file__).parent / "static" / "brand"
 _BRAND_ASSET_MEDIA_TYPES = {
     "favicon.ico": "image/x-icon",
@@ -199,7 +198,6 @@ _BRAND_ASSET_MEDIA_TYPES = {
     "android-chrome-512.png": "image/png",
     "site.webmanifest": "application/manifest+json",
 }
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 
 def _brand_asset_response(filename: str) -> FileResponse:
@@ -296,44 +294,41 @@ def create_dashboard_router(
         """Serve brand assets from their conventional browser locations."""
         return _brand_asset_response(Path(request.url.path).name)
 
-    @router.get("/dashboard", response_class=HTMLResponse)
-    async def dashboard_page(request: Request):
-        """Serve the main dashboard page."""
-        return templates.TemplateResponse(
-            request,
-            "page.html",
-            {"active_view": "monitor"},
+    @router.get("/dashboard", include_in_schema=False)
+    @router.get("/dashboard/chat", include_in_schema=False)
+    async def dashboard_page():
+        """Serve the packaged Svelte application at both dashboard URLs."""
+        return FileResponse(
+            DASHBOARD_ASSETS_DIR / "index.html",
+            media_type="text/html",
+            headers={"Cache-Control": "no-cache"},
         )
 
-    @router.get("/dashboard/chat", response_class=HTMLResponse)
-    async def dashboard_chat_page(request: Request):
-        """Serve the chat completion test console."""
-        return templates.TemplateResponse(
-            request,
-            "chat.html",
-            {
-                "available_models": available_models(),
-                "default_model": default_chat_model(),
-                "active_view": "chat",
-            },
+    @router.get("/dashboard/assets/{filename:path}", include_in_schema=False)
+    async def dashboard_asset(filename: str):
+        """Serve only built assets, with resolved-path containment."""
+        assets_dir = (DASHBOARD_ASSETS_DIR / "assets").resolve()
+        asset = (DASHBOARD_ASSETS_DIR / filename).resolve()
+        if not asset.is_relative_to(assets_dir) or not asset.is_file():
+            raise HTTPException(status_code=404, detail="Dashboard asset not found")
+        return FileResponse(
+            asset, headers={"Cache-Control": "public, max-age=31536000, immutable"}
         )
 
-    @router.get("/dashboard/pool", response_class=HTMLResponse)
-    async def dashboard_pool(request: Request):
-        """Render pool status fragment."""
+    @router.get("/dashboard/config")
+    async def dashboard_config():
+        """Model choices and the configured default for the Svelte chat."""
+        return {"available_models": available_models(), "default_model": default_chat_model()}
+
+    @router.get("/dashboard/pool")
+    async def dashboard_pool():
+        """Return pool capacity as JSON."""
         status = pool_status_fn()
-        return templates.TemplateResponse(
-            request,
-            "pool.html",
-            {
-                "size": status.get("size", 0),
-                "in_use": status.get("in_use", 0),
-            },
-        )
+        return {"size": status.get("size", 0), "in_use": status.get("in_use", 0)}
 
     @router.get("/dashboard/pool/stream")
     async def dashboard_pool_stream(request: Request):
-        """SSE endpoint that pushes pool status HTML on change."""
+        """SSE endpoint that pushes pool status JSON on change."""
 
         async def event_stream():
             try:
@@ -341,12 +336,8 @@ def create_dashboard_router(
                     if await request.is_disconnected():
                         break
                     status = pool_status_fn()
-                    rendered = templates.get_template("pool.html").render(
-                        size=status.get("size", 0),
-                        in_use=status.get("in_use", 0),
-                    )
-                    sse_data = _sse_data_lines(rendered)
-                    yield f"event: message\n{sse_data}\n\n"
+                    payload = {"size": status.get("size", 0), "in_use": status.get("in_use", 0)}
+                    yield f"event: message\ndata: {json.dumps(payload)}\n\n"
                     await state.wait_for_pool_change(timeout=5.0)
             except asyncio.CancelledError:
                 pass
@@ -388,7 +379,7 @@ def create_dashboard_router(
 
     @router.get("/dashboard/requests")
     async def dashboard_requests(request: Request):
-        """SSE endpoint that pushes unified requests HTML on change."""
+        """SSE endpoint that pushes unified requests JSON on change."""
 
         async def event_stream():
             try:
@@ -396,11 +387,7 @@ def create_dashboard_router(
                     if await request.is_disconnected():
                         break
                     merged = _get_merged_requests()
-                    rendered = templates.get_template("requests.html").render(
-                        requests=merged
-                    )
-                    sse_data = _sse_data_lines(rendered)
-                    yield f"event: message\n{sse_data}\n\n"
+                    yield f"event: message\ndata: {json.dumps(merged)}\n\n"
                     await state.wait_for_change(timeout=2.0)
             except asyncio.CancelledError:
                 pass
@@ -413,9 +400,9 @@ def create_dashboard_router(
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
-    @router.get("/dashboard/request/{request_id}", response_class=HTMLResponse)
-    async def dashboard_request_detail(request_id: str, request: Request):
-        """Render request detail — checks active state first, then log file."""
+    @router.get("/dashboard/request/{request_id}")
+    async def dashboard_request_detail(request_id: str):
+        """Return request detail JSON, checking active state before the saved log."""
         _validate_request_id(request_id)
 
         # Check active requests first
@@ -427,24 +414,21 @@ def create_dashboard_router(
                 break
 
         if active is not None:
-            return templates.TemplateResponse(
-                request,
-                "detail.html",
-                {
-                    "request_id": request_id,
-                    "model": active["model"],
-                    "timestamp": "",
-                    "duration_ms": int(active["elapsed_s"] * 1000),
-                    "input_tokens": None,
-                    "output_tokens": None,
-                    "error": None,
-                    "exception_type": None,
-                    "is_active": True,
-                    "buffered_text": active.get("buffered_text", ""),
-                    "messages": active.get("messages", []),
-                    "response": None,
-                },
-            )
+            return {
+                "request_id": request_id,
+                "model": active["model"],
+                "timestamp": "",
+                "duration_ms": int(active["elapsed_s"] * 1000),
+                "input_tokens": None,
+                "output_tokens": None,
+                "error": None,
+                "exception_type": None,
+                "is_active": True,
+                "buffered_text": active.get("buffered_text", ""),
+                "messages": active.get("messages", []),
+                "response": None,
+                "attachments": [],
+            }
 
         # Fall back to log file
         log_dir = session_log_dir()
@@ -455,24 +439,21 @@ def create_dashboard_router(
 
         timing = parsed.get("timing") if isinstance(parsed.get("timing"), dict) else {}
         usage = parsed.get("usage") if isinstance(parsed.get("usage"), dict) else {}
-        return templates.TemplateResponse(
-            request,
-            "detail.html",
-            {
-                "request_id": parsed.get("request_id", request_id),
-                "model": parsed.get("model"),
-                "timestamp": parsed.get("timestamp", ""),
-                "duration_ms": timing.get("duration_ms", 0),
-                "input_tokens": usage.get("input_tokens"),
-                "output_tokens": usage.get("output_tokens"),
-                "error": parsed.get("error"),
-                "exception_type": parsed.get("exception_type"),
-                "is_active": False,
-                "buffered_text": "",
-                "messages": parsed.get("messages", []),
-                "response": parsed.get("response"),
-            },
-        )
+        return {
+            "request_id": parsed.get("request_id", request_id),
+            "model": parsed.get("model"),
+            "timestamp": parsed.get("timestamp", ""),
+            "duration_ms": timing.get("duration_ms", 0),
+            "input_tokens": usage.get("input_tokens"),
+            "output_tokens": usage.get("output_tokens"),
+            "error": parsed.get("error"),
+            "exception_type": parsed.get("exception_type"),
+            "is_active": False,
+            "buffered_text": "",
+            "messages": parsed.get("messages", []),
+            "response": parsed.get("response"),
+            "attachments": parsed.get("attachments", []),
+        }
 
     @router.get("/dashboard/log/{request_id}")
     async def dashboard_log(request_id: str):

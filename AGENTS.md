@@ -32,12 +32,19 @@ agentbridge/
 ├── pool.py        # Lazy Claude SDK client pool
 ├── models.py      # OpenAI schemas and provider model resolution
 ├── dashboard.py   # Dashboard routes and live request state
-└── config.py      # User configuration and log paths
+├── config.py      # User configuration and log paths
+└── static/dashboard/ # Packaged Svelte application
+
+frontend/src/     # Svelte components, chat state, SSE and attachment helpers
 ```
 
 ## Validation
 
 ```bash
+pnpm --dir frontend install --frozen-lockfile
+pnpm --dir frontend check
+pnpm --dir frontend test
+pnpm --dir frontend build
 uv run --frozen --extra test pytest -q
 uv run --frozen --extra test ruff check agentbridge tests
 uv lock --check

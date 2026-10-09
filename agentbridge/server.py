@@ -46,6 +46,7 @@ from .models import (
     Choice,
     ContentPart,
     DeltaMessage,
+    EmbeddingRequest,
     ErrorDetail,
     ErrorResponse,
     FunctionCall,
@@ -121,6 +122,7 @@ def _configure_logging() -> None:
 
     # Suppress verbose SDK internals
     logging.getLogger("claude_agent_sdk").setLevel(logging.WARNING)
+
 
 # ---------------------------------------------------------------------------
 # Image format conversion utilities (OpenAI → Claude)
@@ -284,7 +286,7 @@ def openai_image_to_claude(image_content: ImageUrlContent) -> dict[str, Any]:
                 "type": "base64",
                 "media_type": media_type,
                 "data": data,
-            }
+            },
         }
 
     if is_http_url(url):
@@ -293,7 +295,7 @@ def openai_image_to_claude(image_content: ImageUrlContent) -> dict[str, Any]:
             "source": {
                 "type": "url",
                 "url": url,
-            }
+            },
         }
 
     raise ValueError(f"Unsupported image URL format: {url[:50]}...")
@@ -346,6 +348,7 @@ def extract_text_from_content(content: str | list[ContentPart]) -> str:
 
     return " ".join(parts)
 
+
 # ---------------------------------------------------------------------------
 # Session logging (JSON format)
 # ---------------------------------------------------------------------------
@@ -395,8 +398,14 @@ class SessionLogger:
         self.input_tokens = input_tokens
         self.output_tokens = output_tokens
 
-    def log_error(self, error: str, *, exception_type: str | None = None,
-                  traceback_str: str | None = None, pool_snapshot: dict | None = None) -> None:
+    def log_error(
+        self,
+        error: str,
+        *,
+        exception_type: str | None = None,
+        traceback_str: str | None = None,
+        pool_snapshot: dict | None = None,
+    ) -> None:
         """Record an error with optional diagnostic details."""
         self.error = error
         if exception_type is not None:
@@ -424,10 +433,12 @@ class SessionLogger:
         msg_list = []
         for msg in messages:
             content = "" if msg.content is None else extract_text_from_content(msg.content)
-            msg_list.append({
-                "role": msg.role,
-                "content": content,
-            })
+            msg_list.append(
+                {
+                    "role": msg.role,
+                    "content": content,
+                }
+            )
 
         # Build timing dict
         timing: dict[str, int] = {"duration_ms": duration_ms}
@@ -492,8 +503,7 @@ class SessionLogger:
             def _on_write_done(fut: "asyncio.Future[None]") -> None:
                 if not fut.cancelled() and fut.exception():
                     logging.error(
-                        f"[session_logger] Failed to write log {self.log_path}: "
-                        f"{fut.exception()}"
+                        f"[session_logger] Failed to write log {self.log_path}: {fut.exception()}"
                     )
 
             future.add_done_callback(_on_write_done)
@@ -515,8 +525,7 @@ class SessionLogger:
                     (att_dir / att.filename).write_bytes(base64.b64decode(att.data))
 
             logging.info(
-                f"[session_logger] Saved {len(attachments)} attachment(s) "
-                f"for {self.request_id}"
+                f"[session_logger] Saved {len(attachments)} attachment(s) for {self.request_id}"
             )
         except Exception as e:
             logging.warning(f"[session_logger] Failed to save attachments: {e}")
@@ -524,6 +533,7 @@ class SessionLogger:
     def _cleanup_old_logs(self) -> None:
         """Delete oldest log files if count exceeds MAX_LOG_FILES."""
         try:
+
             def _mtime(f: Path) -> float:
                 try:
                     return f.stat().st_mtime
@@ -535,7 +545,7 @@ class SessionLogger:
                 key=_mtime,
             )
             if len(log_files) > MAX_LOG_FILES:
-                to_delete = log_files[:len(log_files) - MAX_LOG_FILES]
+                to_delete = log_files[: len(log_files) - MAX_LOG_FILES]
                 for f in to_delete:
                     stem = f.stem
                     att_dir = self.log_dir / f"{stem}_attachments"
@@ -559,11 +569,23 @@ _warned_params: set[str] = set()
 
 # Parameters accepted for compatibility but not supported by provider adapters
 _UNSUPPORTED_PARAMS = {
-    "temperature", "top_p", "frequency_penalty", "presence_penalty",
-    "stop", "n", "seed", "response_format", "logit_bias", "logprobs",
-    "top_logprobs", "parallel_tool_calls", "stream_options", "user",
+    "temperature",
+    "top_p",
+    "frequency_penalty",
+    "presence_penalty",
+    "stop",
+    "n",
+    "seed",
+    "response_format",
+    "logit_bias",
+    "logprobs",
+    "top_logprobs",
+    "parallel_tool_calls",
+    "stream_options",
+    "user",
     "max_tokens",  # Accepted but not supported by Claude SDK client options here
 }
+
 
 def _warn_unsupported_params(
     request: "ChatCompletionRequest",
@@ -674,9 +696,11 @@ app = FastAPI(title="AgentBridge", version=__version__, lifespan=lifespan)
 app.include_router(
     create_dashboard_router(
         dashboard_state,
-        pool_status_fn=lambda: pool.status()
-        if pool
-        else {"size": _pool_size, "available": 0, "in_use": 0, "models": []},
+        pool_status_fn=lambda: (
+            pool.status()
+            if pool
+            else {"size": _pool_size, "available": 0, "in_use": 0, "models": []}
+        ),
     )
 )
 
@@ -880,11 +904,13 @@ def make_multimodal_prompt(content_blocks: list[dict]):
     For multimodal content (images), we need to pass an async iterable that yields
     a properly formatted message with content blocks.
     """
+
     async def _gen():
         yield {
             "type": "user",
             "message": {"role": "user", "content": content_blocks},
         }
+
     return _gen()
 
 
@@ -916,7 +942,7 @@ def build_tool_prompt(tools: list[Tool]) -> str:
         f"\n\n---\n"
         f"IMPORTANT: You must call one of these functions by responding with JSON:\n"
         f"```json\n{json.dumps(tool_schemas, indent=2)}\n```\n"
-        f"Respond with: {{\"function\": \"<function_name>\", \"arguments\": {{...}}}}\n"
+        f'Respond with: {{"function": "<function_name>", "arguments": {{...}}}}\n'
         f"Respond ONLY with the JSON object, no other text before or after."
     )
 
@@ -930,9 +956,9 @@ def parse_tool_response(text: str, tools: list[Tool]) -> tuple[str, list[ToolCal
     # Try to find JSON in the response
     # Look for JSON block or raw JSON
     json_patterns = [
-        r'```json\s*([\s\S]*?)\s*```',  # ```json ... ```
-        r'```\s*([\s\S]*?)\s*```',       # ``` ... ```
-        r'(\{[\s\S]*\})',                # Raw JSON object
+        r"```json\s*([\s\S]*?)\s*```",  # ```json ... ```
+        r"```\s*([\s\S]*?)\s*```",  # ``` ... ```
+        r"(\{[\s\S]*\})",  # Raw JSON object
     ]
 
     for pattern in json_patterns:
@@ -978,9 +1004,7 @@ def apply_tool_prompt(prompt: str | list[dict], tools: list[Tool]) -> str | list
     return result
 
 
-async def send_query(
-    client, prompt: str | list[dict], session_id: str = "default"
-) -> None:
+async def send_query(client, prompt: str | list[dict], session_id: str = "default") -> None:
     """Send a query to a Claude client, handling multimodal vs string dispatch."""
     if isinstance(prompt, list):
         await client.query(make_multimodal_prompt(prompt), session_id=session_id)
@@ -990,10 +1014,12 @@ async def send_query(
 
 class ClaudeResponse:
     """Container for Claude SDK response with text and/or tool calls."""
+
     def __init__(self):
         self.text: str = ""
         self.tool_calls: list[ToolCall] = []
         self.usage: dict[str, int] | None = None
+        self.raw_response: dict[str, Any] | None = None
 
     @property
     def has_tool_calls(self) -> bool:
@@ -1134,7 +1160,7 @@ def _codex_event_text_delta(
 
     full_text = max(full_candidates, key=len)
     if full_text.startswith(current_text):
-        return full_text[len(current_text):], full_text
+        return full_text[len(current_text) :], full_text
     if full_text and full_text not in current_text:
         return full_text, current_text + full_text
     return "", current_text
@@ -1168,9 +1194,7 @@ def _prepare_codex_prompt(
         if source.get("type") == "base64" and isinstance(source.get("data"), str):
             encoded = source["data"]
             if str(media_type).startswith("image/"):
-                _, decoded = _decode_raster_data_url(
-                    f"data:{media_type};base64,{encoded}"
-                )
+                _, decoded = _decode_raster_data_url(f"data:{media_type};base64,{encoded}")
             else:
                 try:
                     decoded = base64.b64decode(encoded, validate=True)
@@ -1211,27 +1235,31 @@ def _build_codex_command(
             if image_generation
             else ["--disable", "image_generation"]
         )
-    cmd.extend([
-        "exec",
-        "--json",
-        "--ephemeral",
-    ])
+    cmd.extend(
+        [
+            "exec",
+            "--json",
+            "--ephemeral",
+        ]
+    )
     if strict:
         cmd.append("--ignore-user-config")
-    cmd.extend([
-        "--ignore-rules",
-        "--skip-git-repo-check",
-        "--sandbox",
-        "read-only",
-        "--color",
-        "never",
-        "-C",
-        str(work_dir),
-        "-o",
-        str(output_file),
-        "-m",
-        backend_model,
-    ])
+    cmd.extend(
+        [
+            "--ignore-rules",
+            "--skip-git-repo-check",
+            "--sandbox",
+            "read-only",
+            "--color",
+            "never",
+            "-C",
+            str(work_dir),
+            "-o",
+            str(output_file),
+            "-m",
+            backend_model,
+        ]
+    )
     if output_schema is not None:
         cmd.extend(["--output-schema", str(output_schema)])
     if reasoning_effort:
@@ -1552,9 +1580,7 @@ async def call_codex_cli(
             if tool_calls:
                 response.text = remaining_text
                 response.tool_calls = tool_calls
-                session_logger.log_chunk(
-                    f"[parsed tool_call: {tool_calls[0].function.name}]"
-                )
+                session_logger.log_chunk(f"[parsed tool_call: {tool_calls[0].function.name}]")
 
         usage_dict = response.get_usage()
         logging.info(
@@ -1636,9 +1662,7 @@ def _openrouter_transport_kwargs() -> dict[str, Any]:
             if parsed.scheme not in {"http", "https"} or not parsed.host:
                 raise ValueError
         except (httpx.InvalidURL, ValueError):
-            raise RuntimeError(
-                "OPENROUTER_PROXY_URL must be an HTTP or HTTPS proxy URL."
-            ) from None
+            raise RuntimeError("OPENROUTER_PROXY_URL must be an HTTP or HTTPS proxy URL.") from None
         kwargs["proxy"] = proxy
     ca_file = os.environ.get("OPENROUTER_CA_FILE")
     if ca_file:
@@ -1677,6 +1701,54 @@ async def _openrouter_client():
         sdk = stack.enter_context(OpenRouter(**kwargs))
         await stack.enter_async_context(sdk)
         yield sdk
+
+
+def _openrouter_http_headers() -> dict[str, str]:
+    headers = {
+        "Authorization": f"Bearer {_openrouter_api_key()}",
+        "Content-Type": "application/json",
+        "X-Title": os.environ.get("OPENROUTER_APP_NAME", "agentbridge"),
+    }
+    if referer := os.environ.get("OPENROUTER_SITE_URL"):
+        headers["HTTP-Referer"] = referer
+    return headers
+
+
+async def _openrouter_http_request(
+    method: str,
+    path: str,
+    payload: dict[str, Any] | None = None,
+    params: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Call a fixed upstream API using only AgentBridge-owned credentials."""
+    headers = _openrouter_http_headers()
+    try:
+        async with httpx.AsyncClient(
+            timeout=OPENROUTER_TIMEOUT,
+            follow_redirects=False,
+            **_openrouter_transport_kwargs(),
+        ) as client:
+            response = await client.request(
+                method,
+                f"https://openrouter.ai/api/v1/{path}",
+                headers=headers,
+                json=payload,
+                params=params,
+            )
+    except httpx.HTTPError as exc:
+        raise HTTPException(502, "OpenRouter upstream request failed") from exc
+    if not response.is_success:
+        raise HTTPException(
+            response.status_code,
+            f"OpenRouter upstream returned HTTP {response.status_code}",
+        )
+    try:
+        data = response.json()
+    except ValueError as exc:
+        raise HTTPException(502, "OpenRouter upstream returned invalid JSON") from exc
+    if not isinstance(data, dict):
+        raise HTTPException(502, "OpenRouter upstream returned an invalid response")
+    return data
 
 
 def _openrouter_payload(
@@ -1759,9 +1831,7 @@ def _usage_from_openrouter(data: dict[str, Any]) -> dict[str, int] | None:
         return None
     prompt_tokens = int(usage.get("prompt_tokens", 0) or 0)
     completion_tokens = int(usage.get("completion_tokens", 0) or 0)
-    total_tokens = int(
-        usage.get("total_tokens", prompt_tokens + completion_tokens) or 0
-    )
+    total_tokens = int(usage.get("total_tokens", prompt_tokens + completion_tokens) or 0)
     return {
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
@@ -1781,12 +1851,18 @@ async def call_openrouter_api(
 
     try:
         payload = _openrouter_payload(request, backend_model, stream=False)
-        async with _openrouter_client() as open_router:
-            data_obj = await asyncio.wait_for(
-                open_router.chat.send_async(**payload),
-                timeout=OPENROUTER_TIMEOUT,
-            )
-        data = _openrouter_to_dict(data_obj)
+        # Multimodal provider options are forwarded without SDK normalization.
+        # This preserves generated images, provider routing, and usage pricing.
+        if request.model_extra:
+            data = await _openrouter_http_request("POST", "chat/completions", payload)
+        else:
+            async with _openrouter_client() as open_router:
+                data_obj = await asyncio.wait_for(
+                    open_router.chat.send_async(**payload),
+                    timeout=OPENROUTER_TIMEOUT,
+                )
+            data = _openrouter_to_dict(data_obj)
+        response.raw_response = data
         query_ms = int((time.monotonic() - query_start) * 1000)
         session_logger.log_timing(0, query_ms)
 
@@ -1822,12 +1898,51 @@ async def call_openrouter_api(
             exception_type=type(e).__name__,
             traceback_str=tb,
         )
+        if isinstance(e, HTTPException):
+            raise
         raise RuntimeError(error) from e
 
 
 async def _openrouter_stream_chunks(payload: dict[str, Any]):
-    """Yield OpenRouter SDK stream events as dictionaries."""
+    """Stream provider extensions intact; standard requests retain the SDK adapter."""
+    # Applications carry options absent from the SDK's typed chat signature.
+    extensions = {
+        "max_completion_tokens",
+        "session_id",
+        "cache_control",
+        "modalities",
+        "image_config",
+    }
     async with asyncio.timeout(OPENROUTER_TIMEOUT):
+        if extensions.intersection(payload):
+            async with httpx.AsyncClient(
+                timeout=OPENROUTER_TIMEOUT,
+                follow_redirects=False,
+                **_openrouter_transport_kwargs(),
+            ) as client:
+                async with client.stream(
+                    "POST",
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers=_openrouter_http_headers(),
+                    json=payload,
+                ) as response:
+                    if not response.is_success:
+                        raise HTTPException(
+                            response.status_code, "OpenRouter upstream stream failed"
+                        )
+                    event_lines: list[str] = []
+                    async for line in response.aiter_lines():
+                        if line.startswith("data:"):
+                            event_lines.append(line[5:].lstrip())
+                        elif not line and event_lines:
+                            value = "\n".join(event_lines)
+                            event_lines.clear()
+                            if value == "[DONE]":
+                                return
+                            chunk = json.loads(value)
+                            if isinstance(chunk, dict):
+                                yield chunk
+            return
         async with _openrouter_client() as open_router:
             stream = await open_router.chat.send_async(**payload)
             async for chunk in stream:
@@ -1880,8 +1995,9 @@ async def stream_openrouter_api(
             if not isinstance(chunk, dict):
                 continue
             chunk["model"] = request.model
-            chunk.setdefault("id", request_id)
-            chunk.setdefault("created", created)
+            # Keep outer stream identity aligned with the initial event and local log.
+            chunk["id"] = request_id
+            chunk["created"] = created
             chunk.setdefault("object", "chat.completion.chunk")
 
             usage = _usage_from_openrouter(chunk)
@@ -2011,9 +2127,7 @@ async def call_claude_sdk(
             if tool_calls:
                 response.text = remaining_text
                 response.tool_calls = tool_calls
-                session_logger.log_chunk(
-                    f"[parsed tool_call: {tool_calls[0].function.name}]"
-                )
+                session_logger.log_chunk(f"[parsed tool_call: {tool_calls[0].function.name}]")
 
         total_ms = (session_logger.acquire_ms or 0) + (session_logger.query_ms or 0)
         usage = response.get_usage()
@@ -2147,9 +2261,7 @@ async def stream_claude_sdk(
                                         created=created,
                                         model=model,
                                         choices=[
-                                            StreamChoice(
-                                                delta=DeltaMessage(content=block.text)
-                                            )
+                                            StreamChoice(delta=DeltaMessage(content=block.text))
                                         ],
                                     )
                                     yield f"data: {chunk.model_dump_json()}\n\n"
@@ -2179,14 +2291,10 @@ async def stream_claude_sdk(
                         id=request_id,
                         created=created,
                         model=model,
-                        choices=[
-                            StreamChoice(delta=DeltaMessage(tool_calls=[tool_call]))
-                        ],
+                        choices=[StreamChoice(delta=DeltaMessage(tool_calls=[tool_call]))],
                     )
                     yield f"data: {chunk.model_dump_json()}\n\n"
-                session_logger.log_chunk(
-                    f"[parsed tool_call: {tool_calls[0].function.name}]"
-                )
+                session_logger.log_chunk(f"[parsed tool_call: {tool_calls[0].function.name}]")
             else:
                 # No tool calls found, stream the buffered text in chunks
                 _CHUNK_SIZE = 100
@@ -2226,11 +2334,7 @@ async def stream_claude_sdk(
         snap = pool.snapshot() if pool is not None else {}
         logging.error(f"[{request_id}] Timeout after {CLAUDE_TIMEOUT}s | pool={snap}")
         # Record partial timing if acquire completed before timeout fired
-        if (
-            session_logger.acquire_ms is None
-            and acquire_ms is not None
-            and query_start is not None
-        ):
+        if session_logger.acquire_ms is None and acquire_ms is not None and query_start is not None:
             session_logger.log_timing(
                 acquire_ms,
                 int((time.monotonic() - query_start) * 1000),
@@ -2439,7 +2543,7 @@ async def stream_codex_cli(
             if output_file.exists():
                 final_text = output_file.read_text(errors="replace")
                 if final_text.startswith(full_text):
-                    final_delta = final_text[len(full_text):]
+                    final_delta = final_text[len(full_text) :]
                 elif final_text != full_text:
                     final_delta = final_text
                 else:
@@ -2469,14 +2573,10 @@ async def stream_codex_cli(
                         id=request_id,
                         created=created,
                         model=model,
-                        choices=[
-                            StreamChoice(delta=DeltaMessage(tool_calls=[tool_call]))
-                        ],
+                        choices=[StreamChoice(delta=DeltaMessage(tool_calls=[tool_call]))],
                     )
                     yield f"data: {chunk.model_dump_json()}\n\n"
-                session_logger.log_chunk(
-                    f"[parsed tool_call: {tool_calls[0].function.name}]"
-                )
+                session_logger.log_chunk(f"[parsed tool_call: {tool_calls[0].function.name}]")
             else:
                 _CHUNK_SIZE = 100
                 for i in range(0, len(full_text), _CHUNK_SIZE):
@@ -2512,11 +2612,7 @@ async def stream_codex_cli(
     except asyncio.TimeoutError:
         if proc is not None:
             await _stop_codex_stream_process(proc)
-        if (
-            session_logger.acquire_ms is None
-            and acquire_ms is not None
-            and query_start is not None
-        ):
+        if session_logger.acquire_ms is None and acquire_ms is not None and query_start is not None:
             session_logger.log_timing(
                 acquire_ms,
                 int((time.monotonic() - query_start) * 1000),
@@ -2718,6 +2814,10 @@ async def chat_completions(request: ChatCompletionRequest):
             request.max_tokens,
         )
 
+    if response.raw_response is not None:
+        # OpenRouter image and billing fields must survive the bridge intact.
+        return JSONResponse({**response.raw_response, "model": request.model})
+
     response_message = Message(
         role="assistant",
         content=response.text or None,
@@ -2740,13 +2840,23 @@ async def chat_completions(request: ChatCompletionRequest):
 
 @app.post("/api/v1/images")
 async def generate_image(request: ImageGenerationRequest):
-    """Generate one image through Codex's isolated native image tool."""
+    """Generate images through the explicitly selected AgentBridge provider."""
     request_id = f"img-{uuid4().hex[:12]}"
     resolution = resolve_model_request(request.model)
+    if resolution.provider == "openrouter":
+        payload = request.model_dump(exclude_none=True)
+        payload["model"] = resolution.model
+        return JSONResponse(await _openrouter_http_request("POST", "images", payload))
     if resolution.provider != "codex":
         raise BridgeHTTPException(
             status_code=400,
-            detail="Image generation requires a codex/* model",
+            detail="Image generation requires a codex/* or openrouter/* model",
+            request_id=request_id,
+        )
+    if len(request.input_references) != 1:
+        raise BridgeHTTPException(
+            status_code=400,
+            detail="Codex image generation requires exactly one reference image",
             request_id=request_id,
         )
     reference_url = request.input_references[0].image_url.url
@@ -2792,6 +2902,30 @@ async def generate_image(request: ImageGenerationRequest):
         model=request.model,
         data=[ImageData(b64_json=base64.b64encode(image_data).decode("ascii"))],
         usage=Usage(**usage.get_usage()),
+    )
+
+
+@app.post("/api/v1/embeddings")
+async def embeddings(request: EmbeddingRequest):
+    """Forward embeddings through AgentBridge's configured OpenRouter account."""
+    payload = request.model_dump(exclude_none=True)
+    resolution = resolve_model_request(payload["model"])
+    if resolution.provider != "openrouter":
+        raise HTTPException(400, "Embeddings require an openrouter/* model")
+    payload["model"] = resolution.model
+    return JSONResponse(await _openrouter_http_request("POST", "embeddings", payload))
+
+
+@app.get("/api/v1/openrouter/{path:path}")
+async def openrouter_metadata(path: str, request: Request):
+    """Expose bounded provider metadata without sharing upstream credentials."""
+    allowed = path in {"models", "credits", "key", "endpoints/zdr"} or bool(
+        re.fullmatch(r"(?:images/)?models/[A-Za-z0-9~_.:+-]+/[A-Za-z0-9_.:+-]+/endpoints", path)
+    )
+    if not allowed:
+        raise HTTPException(404, "Unknown provider metadata route")
+    return JSONResponse(
+        await _openrouter_http_request("GET", path, params=dict(request.query_params))
     )
 
 
@@ -2889,10 +3023,7 @@ def _print_banner(port: int, workers: int, timeout: int, config_dir: Path) -> No
     print(f"  {_BRAND_FIR}│{_RESET}     {_BRAND_SIGNAL}────→{_RESET} {_BRAND_FIR}│{_RESET}")
     print(f"  {_BRAND_SIGNAL}╰──────────╯{_RESET}")
     print(f"  {_BOLD}{_BRAND_FIR}AgentBridge{_RESET} {_DIM}v{version}{_RESET}\n")
-    print(
-        f"  {_DIM}Dashboard{_RESET}  "
-        f"{_BRAND_FIR}http://127.0.0.1:{port}/dashboard{_RESET}"
-    )
+    print(f"  {_DIM}Dashboard{_RESET}  {_BRAND_FIR}http://127.0.0.1:{port}/dashboard{_RESET}")
     print(f"  {_DIM}API{_RESET}        {_BRAND_FIR}http://127.0.0.1:{port}/api/v1{_RESET}")
     print(f"  {_DIM}Config{_RESET}     {config_dir}")
     print(f"  {_DIM}Workers{_RESET}    {_BOLD}{workers}{_RESET}")

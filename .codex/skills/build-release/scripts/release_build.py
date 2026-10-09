@@ -232,12 +232,7 @@ def audit_wheel(wheel: Path, version: str) -> dict[str, object]:
         f"{IMPORT_NAME}/pool.py",
         f"{IMPORT_NAME}/config.py",
         f"{IMPORT_NAME}/_build_info.py",
-        f"{IMPORT_NAME}/templates/dashboard/base.html",
-        f"{IMPORT_NAME}/templates/dashboard/chat.html",
-        f"{IMPORT_NAME}/templates/dashboard/detail.html",
-        f"{IMPORT_NAME}/templates/dashboard/page.html",
-        f"{IMPORT_NAME}/templates/dashboard/pool.html",
-        f"{IMPORT_NAME}/templates/dashboard/requests.html",
+        f"{IMPORT_NAME}/static/dashboard/index.html",
     }
     checks = {
         "filename_version": version in wheel.name,
@@ -247,6 +242,14 @@ def audit_wheel(wheel: Path, version: str) -> dict[str, object]:
         "requires_python": metadata is not None and metadata.get("Requires-Python") == ">=3.12",
         "console_script": "agentbridge = agentbridge.server:main" in entry_points,
         "required_package_files": required.issubset(names),
+        "dashboard_javascript": any(
+            name.startswith(f"{IMPORT_NAME}/static/dashboard/assets/") and name.endswith(".js")
+            for name in names
+        ),
+        "dashboard_styles": any(
+            name.startswith(f"{IMPORT_NAME}/static/dashboard/assets/") and name.endswith(".css")
+            for name in names
+        ),
         "has_license": any(name.endswith(".dist-info/licenses/LICENSE") for name in names),
         "no_cache_files": not any(
             "__pycache__" in Path(name).parts or name.endswith(".pyc")

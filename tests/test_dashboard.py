@@ -21,7 +21,6 @@ from agentbridge.dashboard import (
     _get_recent_logs,
     _parse_log_file,
     create_dashboard_router,
-    templates,
 )
 
 # ---------------------------------------------------------------------------
@@ -393,9 +392,10 @@ class TestDashboardPage:
         assert resp.status_code == 200
         assert "text/html" in resp.headers["content-type"]
         assert "AgentBridge" in resp.text
-        assert "request_id" in resp.text
-        assert "loadSelectedDetail" in resp.text
-        assert "/dashboard/request/" in resp.text
+        assert '<div id="app"></div>' in resp.text
+        assert '/dashboard/assets/assets/' in resp.text
+        assert 'htmx' not in resp.text
+        assert resp.headers['cache-control'] == 'no-cache'
         assert 'href="/favicon.ico"' in resp.text
         assert 'href="/favicon.svg"' in resp.text
         assert 'href="/favicon-32.png"' in resp.text
@@ -403,57 +403,25 @@ class TestDashboardPage:
         assert 'href="/site.webmanifest"' in resp.text
         assert "MutationObserver" not in resp.text
 
-    def test_dashboard_links_to_chat(self):
-        """Dashboard page links to Chat."""
-        app = _make_app()
-        client = TestClient(app)
-        resp = client.get("/dashboard")
-        assert resp.status_code == 200
-        assert 'class="nav-item" href="/dashboard/chat">Chat</a>' in resp.text
-
-    def test_dashboard_interactions_have_accessible_semantics(self):
-        """Filter and request controls remain keyboard and screen-reader friendly."""
+    def test_chat_and_monitor_serve_the_same_svelte_shell(self):
         client = TestClient(_make_app())
+        assert client.get('/dashboard').content == client.get('/dashboard/chat').content
 
-        page = client.get("/dashboard")
-        requests = templates.get_template("requests.html").render(
-            requests=[
-                {
-                    **SAMPLE_LOG,
-                    "is_active": False,
-                    "duration_ms": 1100,
-                    "input_tokens": 100,
-                    "output_tokens": 50,
-                }
-            ]
-        )
+    def test_built_assets_are_served_and_paths_are_contained(self):
+        import re
 
-        assert 'aria-label="Filter requests"' in page.text
-        assert '<button class="request-row' in requests
-        assert 'type="button"' in requests
-        assert 'class="filter-empty"' in requests
-        assert "No matching requests" in requests
-
-    def test_json_highlighter_uses_one_pass_over_plain_json(self):
-        """Generated highlighting markup must never be processed as JSON again."""
-        page = TestClient(_make_app()).get("/dashboard")
-
-        assert "var jsonTokenPattern =" in page.text
-        assert "return pretty.replace(jsonTokenPattern" in page.text
-        assert ").replace(/\"(?:\\\\.|[^\"\\\\])*\"/g" not in page.text
-
-    def test_back_navigation_restores_default_request(self):
-        """Returning to the base dashboard must not leave stale request detail."""
-        page = TestClient(_make_app()).get("/dashboard")
-
-        assert "function loadDefaultRequest()" in page.text
-        assert "else {\n                    loadDefaultRequest();\n                }" in page.text
-        assert "loadSelectedDetail({ scroll: false });" in page.text
-        assert (
-            "loadSelectedDetail({ scroll: false });\n"
-            "                    } else {\n"
-            "                        loadDefaultRequest();"
-        ) in page.text
+        client = TestClient(_make_app())
+        page = client.get('/dashboard').text
+        paths = re.findall(r'(?:src|href)="(/dashboard/assets/[^" ]+)"', page)
+        assert len(paths) == 2
+        for path in paths:
+            response = client.get(path)
+            assert response.status_code == 200
+            assert 'immutable' in response.headers['cache-control']
+        assert client.get('/dashboard/assets/index.html').status_code == 404
+        traversal = '/dashboard/assets/assets/%2e%2e/%2e%2e/brand/favicon.svg'
+        assert client.get(traversal).status_code == 404
+        assert client.get('/dashboard/assets/assets/missing.js').status_code == 404
 
     def test_serves_packaged_brand_assets(self):
         """Dashboard chrome assets are available from the installed package."""
@@ -487,15 +455,11 @@ class TestDashboardPage:
 
 
 class TestDashboardChatPage:
-    """Tests for GET /dashboard/chat."""
-
     def test_default_model_is_available_and_selected(self, monkeypatch):
-        """A fresh chat uses the advertised Codex default."""
         monkeypatch.delenv("AGENTBRIDGE_DEFAULT_MODEL", raising=False)
-        resp = TestClient(_make_app()).get("/dashboard/chat")
-        assert (
-            '<option value="codex/gpt-6.1-sol" selected>codex/gpt-6.1-sol</option>'
-        ) in resp.text
+        config = TestClient(_make_app()).get('/dashboard/config').json()
+        assert config['default_model'] == 'codex/gpt-6.1-sol'
+        assert config['default_model'] in [model['slug'] for model in config['available_models']]
 
     @pytest.mark.parametrize("model", [
         "openrouter/default", "openrouter/deepseek/deepseek-v4.1-flash",
@@ -503,139 +467,22 @@ class TestDashboardChatPage:
     ])
     def test_user_default_is_available_and_selected(self, monkeypatch, model):
         monkeypatch.setenv("AGENTBRIDGE_DEFAULT_MODEL", model)
-        resp = TestClient(_make_app()).get("/dashboard/chat")
-        assert resp.status_code == 200
-        assert f'<option value="{model}" selected>{model}</option>' in resp.text
-
-
-    def test_returns_chat_html(self):
-        """Chat page includes attachment and error-detail UI."""
-        app = _make_app()
-        client = TestClient(app)
-        resp = client.get("/dashboard/chat")
-        assert resp.status_code == 200
-        assert "text/html" in resp.headers["content-type"]
-        assert "Send a test message" in resp.text
-        assert "Drop files to attach" in resp.text
-        assert "Copy details" in resp.text
-        assert "Server error" in resp.text
-        assert "model-badge" in resp.text
-        assert "markdownToHtml" in resp.text
-        assert "appendAssistantDelta" in resp.text
-        assert 'rows="1"' in resp.text
-        assert 'accept="image/*,application/pdf,text/plain,.txt"' in resp.text
-        assert "is not an image, PDF, or TXT file" in resp.text
-        assert "autosizePrompt" in resp.text
-        assert "supportsStreaming" not in resp.text
-        assert "Base URL" not in resp.text
-        assert '<input id="base-url" type="hidden" value="/api/v1">' in resp.text
-        assert "message-info" in resp.text
-        assert "setMessageRequestId" in resp.text
-        assert "sessionStorage.setItem(chatStateKey" in resp.text
-        assert "restoreChatState" in resp.text
-        assert "var renderedMessages = []" in resp.text
-        assert 'modelEl.addEventListener("change", saveChatState)' in resp.text
-        assert '"/dashboard?request_id=" + encodeURIComponent(requestId)' in resp.text
-        assert 'class="main-nav"' in resp.text
-        assert 'class="nav-item" href="/dashboard">Monitor</a>' in resp.text
-        assert 'class="nav-item active" href="/dashboard/chat">Chat</a>' in resp.text
-        assert '<option value="codex/gpt-5.6-sol">codex/gpt-5.6-sol</option>' in resp.text
-        assert 'if (e.key !== "Enter" || e.isComposing) return;' in resp.text
-        assert "if (e.shiftKey || e.altKey) return;" in resp.text
-        assert "e.preventDefault();" in resp.text
-        assert 'aria-label="Send message"' in resp.text
-        assert '<button id="send" class="primary" type="button">Send</button>' not in resp.text
-        assert "typing-indicator" in resp.text
-        assert "Assistant is typing" in resp.text
-        assert 'loading: true' in resp.text
-        assert "loadModels" not in resp.text
-        assert "responseText" not in resp.text
-        assert "stream: true" in resp.text
-        assert "var conversationMessages = []" in resp.text
-        assert "messages: conversationMessages.concat([userMessage])" in resp.text
-        assert (
-            'conversationMessages.push({ role: "assistant", content: streamedText })'
-            in resp.text
-        )
-        assert "Copy cURL" not in resp.text
-        assert 'id="stream"' not in resp.text
-
-    def test_hidden_file_picker_is_not_a_duplicate_tab_stop(self):
-        """Only the visible attach button should be keyboard focusable."""
-        resp = TestClient(_make_app()).get("/dashboard/chat")
-
-        assert (
-            '<input id="file-input" class="hidden-input" type="file" '
-            'tabindex="-1" aria-hidden="true"'
-        ) in resp.text
-
-    def test_composer_exposes_only_available_and_named_actions(self):
-        """Composer actions communicate whether they can run and what they remove."""
-        resp = TestClient(_make_app()).get("/dashboard/chat")
-
-        assert 'id="send" class="primary" type="button" disabled' in resp.text
-        assert "function updateSendAvailability()" in resp.text
-        assert 'remove.setAttribute("aria-label", "Remove " + fileName)' in resp.text
-
-    def test_retry_replays_the_prepared_request(self):
-        """Retry must retain the failed payload after the composer is cleared."""
-        resp = TestClient(_make_app()).get("/dashboard/chat")
-
-        assert (
-            "function appendError(status, statusText, body, requestId, retryAction, options)"
-            in resp.text
-        )
-        assert "async function submitPreparedMessage(payload, userMessage, userTarget)" in resp.text
-        assert 'retry.addEventListener("click", sendMessage)' not in resp.text
-        assert "if (chunk && chunk.error)" in resp.text
-        assert 'error.type = "stream_error"' in resp.text
-        assert "var summary = status ? String(status)" in resp.text
-
-    def test_discarded_assistant_is_removed_from_persisted_chat_state(self):
-        """A failed loading message must not return as a blank message on reload."""
-        resp = TestClient(_make_app()).get("/dashboard/chat")
-
-        assert "function removeRenderedMessage(article)" in resp.text
-        assert "renderedMessages.splice(index, 1);" in resp.text
-        assert "removeRenderedMessage(article);" in resp.text
-        assert 'role: "error"' in resp.text
-        assert 'if (message.role === "error" || message.pendingRequest)' in resp.text
+        response = TestClient(_make_app()).get('/dashboard/config')
+        assert response.status_code == 200
+        config = response.json()
+        assert config['default_model'] == model
+        assert model in [item['slug'] for item in config['available_models']]
 
 
 class TestDashboardPool:
-    """Tests for GET /dashboard/pool."""
-
-    def test_returns_html_with_pool_dot(self):
-        """Pool endpoint returns HTML with 'pool-dot'."""
-        app = _make_app()
-        client = TestClient(app)
-        resp = client.get("/dashboard/pool")
-        assert resp.status_code == 200
-        assert "text/html" in resp.headers["content-type"]
-        assert "pool-dot" in resp.text
-
-    def test_lazy_empty_pool_shows_capacity_available(self):
-        """A lazily initialized empty pool still has request capacity."""
-        app = _make_app(
-            pool_status_fn=lambda: {"size": 1, "available": 0, "in_use": 0}
-        )
-        client = TestClient(app)
-        resp = client.get("/dashboard/pool")
-        assert resp.status_code == 200
-        assert "Healthy" in resp.text
-        assert "1/1 capacity" in resp.text
-        assert "Busy" not in resp.text
-
-    def test_pool_at_capacity_shows_busy(self):
-        """Pool status reports busy only when all worker capacity is in use."""
-        app = _make_app(
-            pool_status_fn=lambda: {"size": 1, "available": 0, "in_use": 1}
-        )
-        client = TestClient(app)
-        resp = client.get("/dashboard/pool")
-        assert resp.status_code == 200
-        assert "Busy" in resp.text
-        assert "0/1 capacity" in resp.text
+    @pytest.mark.parametrize('in_use', [0, 1])
+    def test_returns_configured_capacity(self, in_use):
+        client = TestClient(_make_app(pool_status_fn=lambda: {
+            'size': 1, 'available': 0, 'in_use': in_use,
+        }))
+        response = client.get('/dashboard/pool')
+        assert response.status_code == 200
+        assert response.json() == {'size': 1, 'in_use': in_use}
 
 
 class TestDashboardRequests:
@@ -715,7 +562,11 @@ class TestDashboardRequests:
         content = "".join(chunks)
         assert "chatcmpl-11000001" in content or "11000001" in content
         assert "chatcmpl-d0000001" in content or "d0000001" in content
-        assert "request-row-active" in content
+        payload = json.loads(content.split('data: ', 1)[1].strip())
+        assert payload[0]['is_active'] is True
+        assert payload[1]['is_active'] is False
+        assert payload[1]['input_tokens'] == 100
+        assert payload[1]['duration_ms'] == 1100
 
 
 @pytest.mark.parametrize(
@@ -746,7 +597,8 @@ class TestDashboardRequestDetail:
         client = TestClient(app)
         resp = client.get("/dashboard/request/chatcmpl-11111111")
         assert resp.status_code == 200
-        assert "Live Stream" in resp.text
+        assert resp.json()["is_active"] is True
+        assert resp.json()["messages"] == []
 
     def test_log_file_request_shows_detail(self, tmp_path, monkeypatch):
         """Completed request detail is rendered from log file."""
@@ -832,11 +684,8 @@ def test_zero_token_counts_are_displayed_as_zero(tmp_path, monkeypatch):
     }))
     response = TestClient(_make_app()).get("/dashboard/request/chatcmpl-00000001")
     assert response.status_code == 200
-    for label in ["Prompt Tokens", "Completion Tokens", "Total Tokens"]:
-        import re
-
-        assert re.search(label + r'</div>\s*<div class="meta-value">0</div>', response.text)
-
+    assert response.json()['input_tokens'] == 0
+    assert response.json()['output_tokens'] == 0
 
 
 async def test_monitor_subscription_recovers_tokens_between_render_and_connect():

@@ -83,6 +83,18 @@ jobs:
         run: uv run --frozen --extra test --python ${{ matrix.python-version }} pip-audit
       - name: Lint
         run: uv run --frozen --extra test --python ${{ matrix.python-version }} ruff check agentbridge tests .codex/skills/build-release/scripts/release_build.py
+      - name: Validate Svelte dashboard
+        run: |
+          npm install --global pnpm@10.33.0 --ignore-scripts --min-release-age=10080
+          pnpm --dir frontend install --frozen-lockfile
+          pnpm --dir frontend check
+          pnpm --dir frontend test
+          pnpm --dir frontend build
+          if [[ -n "$(git status --porcelain -- agentbridge/static/dashboard)" ]]; then
+            echo "Rebuild and commit dashboard assets with frontend changes" >&2
+            exit 1
+          fi
+
       - name: Run tests
         run: uv run --frozen --extra test --python ${{ matrix.python-version }} pytest -q
 

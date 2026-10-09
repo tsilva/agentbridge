@@ -1,0 +1,2 @@
+# Dashboard bundles are generated; preserve literal whitespace in compiled JavaScript.
+agentbridge/static/dashboard/assets/* linguist-generated=true -whitespace

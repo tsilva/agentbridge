@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 from typing import Annotated, Any, Literal, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from .config import DEFAULT_OPENROUTER_MODEL, default_chat_model, openrouter_default_model
 
@@ -54,11 +54,12 @@ class ImageUrlContent(BaseModel):
 
 
 class TextContent(BaseModel):
+    model_config = ConfigDict(extra="allow")
     type: Literal["text"]
     text: str
 
 
-ContentPart = Annotated[Union[TextContent, ImageUrlContent], Field(discriminator='type')]
+ContentPart = Annotated[Union[TextContent, ImageUrlContent], Field(discriminator="type")]
 
 ReasoningEffort = Literal["minimal", "low", "medium", "high", "xhigh"]
 
@@ -72,6 +73,7 @@ class Message(BaseModel):
 
 
 class ChatCompletionRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
     model: str
     messages: list[Message] = Field(min_length=1)
     temperature: float | None = None
@@ -104,10 +106,17 @@ class ImageReference(BaseModel):
     image_url: ImageUrl
 
 
+class EmbeddingRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    model: str
+    input: str | list[str] | list[int] | list[list[int]]
+
+
 class ImageGenerationRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
     model: str
     prompt: str = Field(min_length=1, max_length=20_000)
-    input_references: list[ImageReference] = Field(min_length=1, max_length=1)
+    input_references: list[ImageReference] = Field(default_factory=list, max_length=8)
     n: Literal[1] = 1
     store: Literal[False] = False
 
@@ -238,9 +247,10 @@ class ModelResolution:
     provider: Literal["claudecode", "codex", "openrouter"]
     model: str
 
+
 # Word-boundary pattern for matching model names in slugs
 _MODEL_PATTERN = re.compile(
-    r'(?:^|[^a-zA-Z])(' + '|'.join(sorted(CLAUDE_SIMPLE_NAMES)) + r')(?:[^a-zA-Z]|$)',
+    r"(?:^|[^a-zA-Z])(" + "|".join(sorted(CLAUDE_SIMPLE_NAMES)) + r")(?:[^a-zA-Z]|$)",
     re.IGNORECASE,
 )
 # Available models for /api/v1/models endpoint.
