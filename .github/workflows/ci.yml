@@ -43,7 +43,7 @@ jobs:
 
       - name: Validate Svelte dashboard
         run: |
-          npm install --global pnpm@10.33.0 --ignore-scripts --min-release-age=10080
+          npm install --global pnpm@10.33.0 --ignore-scripts --min-release-age=7
           pnpm --dir frontend install --frozen-lockfile
           pnpm --dir frontend check
           pnpm --dir frontend test
