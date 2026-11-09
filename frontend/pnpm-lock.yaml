@@ -4,13 +4,21 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  '@sveltejs/vite-plugin-svelte@7.3.1>deepmerge': npm:@fastify/deepmerge@3.2.4
+
+patchedDependencies:
+  '@sveltejs/vite-plugin-svelte@7.3.1':
+    hash: f297101ac22366b20f7539673e211123caca071de8625444dad79fd717fdae80
+    path: patches/svelte-vite-plugin-7.3.1.patch
+
 importers:
 
   .:
     devDependencies:
       '@sveltejs/vite-plugin-svelte':
         specifier: 7.3.1
-        version: 7.3.1(svelte@5.57.1)(vite@8.3.3)
+        version: 7.3.1(patch_hash=f297101ac22366b20f7539673e211123caca071de8625444dad79fd717fdae80)(svelte@5.57.1)(vite@8.3.3)
       svelte:
         specifier: 5.57.1
         version: 5.57.1
@@ -25,6 +33,9 @@ importers:
         version: 8.3.3
 
 packages:
+
+  '@fastify/deepmerge@3.2.4':
+    resolution: {integrity: sha512-kc8GQq5gX9RRhw0rov3DMrN8wS8yRlxJRdDzsYwwdBV/wazuVgc/1K7CKL90tlvu3RlHan6Y0R0aE3nJtBz2eQ==}
 
   '@jridgewell/gen-mapping@0.3.13':
     resolution: {integrity: sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA==}
@@ -183,10 +194,6 @@ packages:
   clsx@2.1.1:
     resolution: {integrity: sha512-eYm0QWBtUrBWZWG0d386OGAw16Z995PiOVo2B7bjWSbHedGl5e0ZWaq65kOGgUSNesEIDkB9ISbTg/JK9dhCZA==}
     engines: {node: '>=6'}
-
-  deepmerge@4.3.1:
-    resolution: {integrity: sha512-3sUqbMEc77XqpdNO7FRyRog+eW3ph+GYCbj+rK+uYyRMuwsVy0rMiVtPn+QJlKFvWP/1PYpapqYn0Me2knFn+A==}
-    engines: {node: '>=0.10.0'}
 
   detect-libc@2.1.2:
     resolution: {integrity: sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ==}
@@ -424,6 +431,8 @@ packages:
 
 snapshots:
 
+  '@fastify/deepmerge@3.2.4': {}
+
   '@jridgewell/gen-mapping@0.3.13':
     dependencies:
       '@jridgewell/sourcemap-codec': 1.6.0
@@ -498,9 +507,9 @@ snapshots:
 
   '@sveltejs/load-config@0.2.3': {}
 
-  '@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.57.1)(vite@8.3.3)':
+  '@sveltejs/vite-plugin-svelte@7.3.1(patch_hash=f297101ac22366b20f7539673e211123caca071de8625444dad79fd717fdae80)(svelte@5.57.1)(vite@8.3.3)':
     dependencies:
-      deepmerge: 4.3.1
+      deepmerge: '@fastify/deepmerge@3.2.4'
       magic-string: 1.4.2
       obug: 2.2.1
       svelte: 5.57.1
@@ -520,8 +529,6 @@ snapshots:
       readdirp: 4.1.2
 
   clsx@2.1.1: {}
-
-  deepmerge@4.3.1: {}
 
   detect-libc@2.1.2: {}
 
