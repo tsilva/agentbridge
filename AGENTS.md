@@ -51,6 +51,24 @@ uv lock --check
 uv build
 ```
 
+### Local native proxy administration
+
+The approved local infrastructure source is restricted to Development `/proxy`, `AGENT_VAULT_PROXY_TOKEN` and
+`AGENT_VAULT_CA_PRIVATE_KEY`. These are privileged proxy bootstrap values, not
+AgentBridge application/provider keys. Only the trusted native proxy supervisor
+may retrieve them. Never export this folder or inject its values into a tool,
+model client, dev server or application job. Ordinary provider credentials remain
+in their existing Agent Vault service bindings. The separate Development
+`/recovery` folder contains encrypted administrative rollback state; it is never
+an ordinary tool credential source. No automatic cross-profile fallback is allowed.
+
+For the separate trusted native Vault proxy supervisor, follow
+[`docs/local-vault-proxy.md`](docs/local-vault-proxy.md) and run its stdlib tests.
+This administrative helper must never export upstream service keys to ordinary
+clients, accept consumer scope overrides or cache the proxy's private CA locally.
+Adding or testing it does not authorize a proxy/server restart, shared-session
+renewal, credential rotation, app-default change or deployment.
+
 ## Dashboard audit
 
 Use the project-level
