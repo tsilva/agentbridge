@@ -183,7 +183,8 @@ uv build                                                # build wheel and source
 
 Configuration lives in `~/.config/agentbridge/.env`. Process environment
 variables take precedence. CLI flags override the configured port and worker
-count.
+count. The OpenRouter key, proxy and CA settings stay in the server, outside the
+environment inherited by Claude and Codex subprocesses.
 
 | Variable | Default or purpose |
 | --- | --- |

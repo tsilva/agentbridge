@@ -6,6 +6,9 @@ import os
 from pathlib import Path
 
 CONFIG_DIR_ENV = "AGENTBRIDGE_CONFIG_DIR"
+_OPENROUTER_TRANSPORT_NAMES = frozenset({
+    "OPENROUTER_API_KEY", "OPENROUTER_PROXY_URL", "OPENROUTER_CA_FILE",
+})
 DEFAULT_POOL_SIZE = 1
 DEFAULT_CHAT_MODEL = "codex/gpt-6.1-sol"
 DEFAULT_OPENROUTER_MODEL = "deepseek/deepseek-v4.1-flash"
@@ -60,8 +63,15 @@ def _unquote_env_value(value: str) -> str:
     return value
 
 
-def load_user_env(*, create: bool = False) -> Path | None:
-    """Load ~/.config/agentbridge/.env into os.environ without overriding existing values."""
+def load_user_env(
+    *, create: bool = False, openrouter_transport: dict[str, str] | None = None,
+) -> Path | None:
+    """Load user defaults, keeping the running server's OpenRouter transport private."""
+    if openrouter_transport is not None:
+        for name in _OPENROUTER_TRANSPORT_NAMES:
+            if name in os.environ:
+                openrouter_transport[name] = os.environ.pop(name)
+
     path = user_env_path(create_parent=create)
     if create and not path.exists():
         _write_default_env(path)
@@ -78,7 +88,10 @@ def load_user_env(*, create: bool = False) -> Path | None:
             continue
         parsed_value = _unquote_env_value(value)
         if parsed_value:
-            os.environ.setdefault(key, parsed_value)
+            target = os.environ
+            if openrouter_transport is not None and key in _OPENROUTER_TRANSPORT_NAMES:
+                target = openrouter_transport
+            target.setdefault(key, parsed_value)
 
     return path
 

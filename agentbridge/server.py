@@ -665,6 +665,9 @@ async def _watch_parent_process(parent_pid: int, interval: float = 1.0) -> None:
 async def lifespan(app: FastAPI):
     """Manage application lifespan - initialize and shutdown provider resources."""
     global pool, _pool_lock, _pool_size, codex_semaphore
+    transport = getattr(app.state, "openrouter_transport", {})
+    load_user_env(openrouter_transport=transport)
+    app.state.openrouter_transport = transport
     _pool_size = int(os.environ.get("POOL_SIZE", DEFAULT_POOL_SIZE))
     _pool_lock = asyncio.Lock()
     codex_semaphore = asyncio.Semaphore(_pool_size)
@@ -1625,10 +1628,16 @@ async def call_codex_cli(
             semaphore.release()
 
 
+def _openrouter_transport_setting(name: str) -> str | None:
+    return getattr(app.state, "openrouter_transport", os.environ).get(name)
+
+
 def _openrouter_api_key() -> str:
     """Return the configured OpenRouter API key."""
-    load_user_env(create=True)
-    api_key = os.environ.get("OPENROUTER_API_KEY")
+    load_user_env(
+        create=True, openrouter_transport=getattr(app.state, "openrouter_transport", None),
+    )
+    api_key = _openrouter_transport_setting("OPENROUTER_API_KEY")
     if not api_key:
         raise RuntimeError(
             "OPENROUTER_API_KEY is required for openrouter/<model> requests. "
@@ -1655,7 +1664,7 @@ def _openrouter_client_kwargs() -> dict[str, Any]:
 def _openrouter_transport_kwargs() -> dict[str, Any]:
     """Apply optional OpenRouter-only proxy and additional certificate trust."""
     kwargs: dict[str, Any] = {}
-    proxy = os.environ.get("OPENROUTER_PROXY_URL")
+    proxy = _openrouter_transport_setting("OPENROUTER_PROXY_URL")
     if proxy:
         try:
             parsed = httpx.URL(proxy)
@@ -1664,7 +1673,7 @@ def _openrouter_transport_kwargs() -> dict[str, Any]:
         except (httpx.InvalidURL, ValueError):
             raise RuntimeError("OPENROUTER_PROXY_URL must be an HTTP or HTTPS proxy URL.") from None
         kwargs["proxy"] = proxy
-    ca_file = os.environ.get("OPENROUTER_CA_FILE")
+    ca_file = _openrouter_transport_setting("OPENROUTER_CA_FILE")
     if ca_file:
         try:
             context = ssl.create_default_context()
